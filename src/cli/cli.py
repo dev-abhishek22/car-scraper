@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+import argparse
+import sys
+from collections.abc import Callable, Sequence
+
+from src.cli.carwale.brand_cli import (
+    add_carwale_brands_command,
+)
+from src.cli.cleanup_cli import (
+    add_cleanup_command,
+)
+
+CommandHandler = Callable[
+    [argparse.Namespace],
+    int,
+]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="car-scraper",
+        description="Car website scraping CLI",
+    )
+
+    subparsers = parser.add_subparsers(
+        dest="command",
+        title="available commands",
+        metavar="COMMAND",
+    )
+
+    add_carwale_brands_command(
+        subparsers=subparsers,
+    )
+
+    add_cleanup_command(
+        subparsers=subparsers,
+    )
+
+    return parser
+
+
+def main(
+    argv: Sequence[str] | None = None,
+) -> int:
+    parser = build_parser()
+
+    arguments = list(argv if argv is not None else sys.argv[1:])
+
+    if not arguments:
+        parser.print_help()
+        return 0
+
+    args = parser.parse_args(arguments)
+
+    handler: CommandHandler | None = getattr(
+        args,
+        "handler",
+        None,
+    )
+
+    if handler is None:
+        parser.print_help()
+        return 0
+
+    try:
+        return handler(args)
+
+    except KeyboardInterrupt:
+        print(
+            "\nCommand interrupted.",
+            file=sys.stderr,
+        )
+
+        return 130
+
+    except Exception as error:
+        print(
+            f"Command failed: {error}",
+            file=sys.stderr,
+        )
+
+        return 1
