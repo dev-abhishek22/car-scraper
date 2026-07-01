@@ -7,6 +7,12 @@ from collections.abc import Callable, Sequence
 from src.cli.carwale.brand_cli import (
     add_carwale_brands_command,
 )
+from src.cli.carwale.car_cli import (
+    add_carwale_cars_command,
+)
+from src.cli.carwale.cities_cli import (
+    add_carwale_cities_command,
+)
 from src.cli.carwale.model_cli import (
     add_carwale_models_command,
 )
@@ -32,6 +38,10 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="COMMAND",
     )
 
+    add_cleanup_command(
+        subparsers=subparsers,
+    )
+
     add_carwale_brands_command(
         subparsers=subparsers,
     )
@@ -40,7 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
         subparsers=subparsers,
     )
 
-    add_cleanup_command(
+    add_carwale_cars_command(
+        subparsers=subparsers,
+    )
+
+    add_carwale_cities_command(
         subparsers=subparsers,
     )
 

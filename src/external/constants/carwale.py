@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Final
 
 from src.external.constants.base import ApiEndpoint
@@ -18,7 +20,7 @@ CARWALE_NEW_CARS: Final[ApiEndpoint] = ApiEndpoint(
         "platformId": 1,
     },
     default_headers={
-        "Referer": ("https://www.carwale.com/new-cars/"),
+        "Referer": "https://www.carwale.com/new-cars/",
     },
 )
 
@@ -37,7 +39,34 @@ CARWALE_MAKE_PAGE_DATA: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+CARWALE_MODEL_PAGE_DATA: Final[ApiEndpoint] = ApiEndpoint(
+    name="carwale_model_page_data",
+    method="GET",
+    path="/api/modelpagedata/",
+    default_params={
+        "cityId": 10,
+        "areaId": 3657,
+        "showOfferUpfront": "false",
+        "platformId": 1,
+    },
+    default_headers={
+        "Accept": "*/*",
+        "Referer": "https://www.carwale.com/",
+    },
+)
+
+CARWALE_CITIES: Final[ApiEndpoint] = ApiEndpoint(
+    name="carwale_cities",
+    method="GET",
+    path="/api/cities",
+    default_headers={
+        "Referer": "https://www.carwale.com/",
+    },
+)
+
 CARWALE_APIS: Final[dict[str, ApiEndpoint]] = {
     CARWALE_NEW_CARS.name: CARWALE_NEW_CARS,
     CARWALE_MAKE_PAGE_DATA.name: CARWALE_MAKE_PAGE_DATA,
+    CARWALE_MODEL_PAGE_DATA.name: CARWALE_MODEL_PAGE_DATA,
+    CARWALE_CITIES.name: CARWALE_CITIES,
 }

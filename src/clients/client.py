@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json as json_lib
+import math
+import os
 import random
+import tempfile
 import threading
 import time
 from collections.abc import Mapping, Sequence
@@ -40,19 +43,22 @@ class ExternalHttpClient:
     """
     Reusable synchronous HTTP client for external websites.
 
+    The same instance can be shared by multiple worker threads.
+
     Features:
     - Persistent HTTP connection pooling
     - Stable user-agent for one client session
     - Default and request-specific headers
     - Cookie persistence
-    - Minimum interval between requests
-    - Configurable timeouts
-    - Retry handling
-    - Retry-After support
+    - Global minimum interval between request starts
+    - Global Retry-After cooldown for rate limiting
+    - Configurable timeouts and connection limits
+    - Retry handling for temporary HTTP and network failures
     - Prepared-request display
-    - Prepared-request JSON logging
+    - Atomic prepared-request JSON logging
     - Sensitive-data redaction
     - JSON response parsing
+    - Graceful and idempotent shutdown
     """
 
     RETRYABLE_STATUS_CODES = {
@@ -69,6 +75,12 @@ class ExternalHttpClient:
         401,
         403,
     }
+
+    RETRYABLE_REQUEST_EXCEPTIONS = (
+        httpx.TimeoutException,
+        httpx.NetworkError,
+        httpx.RemoteProtocolError,
+    )
 
     SENSITIVE_REQUEST_HEADERS = {
         "authorization",
@@ -122,20 +134,49 @@ class ExternalHttpClient:
         verify_ssl: bool = True,
         trust_environment: bool = False,
     ) -> None:
+        normalized_base_url = self._normalize_base_url(base_url)
+
         self._validate_configuration(
-            base_url=base_url,
             user_agent=user_agent,
             user_agents=user_agents,
             min_request_interval=min_request_interval,
             max_retries=max_retries,
+            connect_timeout=connect_timeout,
+            read_timeout=read_timeout,
+            write_timeout=write_timeout,
+            pool_timeout=pool_timeout,
+            max_connections=max_connections,
+            max_keepalive_connections=max_keepalive_connections,
+            keepalive_expiry=keepalive_expiry,
         )
 
-        self.base_url = base_url.rstrip("/")
-        self.min_request_interval = min_request_interval
+        self.base_url = normalized_base_url
+        self.min_request_interval = float(min_request_interval)
         self.max_retries = max_retries
 
-        self._request_lock = threading.Lock()
+        # Coordinates request-start spacing and global rate-limit cooldowns.
+        self._rate_condition = threading.Condition()
         self._last_request_started_at: float | None = None
+        self._blocked_until = 0.0
+
+        # Protects header/cookie mutations and request preparation.
+        self._client_configuration_lock = threading.RLock()
+
+        # Keeps console output from multiple workers readable.
+        self._console_lock = threading.Lock()
+
+        # Protects request snapshot files when multiple workers accidentally
+        # use the same path.
+        self._snapshot_locks_guard = threading.Lock()
+        self._snapshot_locks: dict[Path, threading.Lock] = {}
+
+        # Tracks lifecycle so close() can wait for active logical requests.
+        self._lifecycle_condition = threading.Condition()
+        self._close_lock = threading.Lock()
+        self._close_event = threading.Event()
+        self._active_requests = 0
+        self._closed = False
+        self._client_closed = False
 
         selected_user_agent = self._select_user_agent(
             user_agent=user_agent,
@@ -164,8 +205,10 @@ class ExternalHttpClient:
             keepalive_expiry=keepalive_expiry,
         )
 
+        # Retry ownership stays in this class. Keeping transport retries at
+        # zero avoids hidden duplicate connection attempts.
         transport = httpx.HTTPTransport(
-            retries=1,
+            retries=0,
             verify=verify_ssl,
         )
 
@@ -184,23 +227,76 @@ class ExternalHttpClient:
             (
                 "External HTTP client initialized: "
                 f"base_url={self.base_url}, "
-                f"user_agent={selected_user_agent}"
+                f"user_agent={selected_user_agent}, "
+                f"max_connections={max_connections}, "
+                "max_keepalive_connections="
+                f"{max_keepalive_connections}, "
+                "min_request_interval="
+                f"{self.min_request_interval:.2f}s"
             ),
             context=self.__class__.__name__,
         )
 
     @staticmethod
-    def _validate_configuration(
+    def _normalize_base_url(base_url: str) -> str:
+        if not isinstance(base_url, str):
+            raise ValueError("base_url must be a string")
+
+        normalized_base_url = base_url.strip().rstrip("/")
+
+        if not normalized_base_url:
+            raise ValueError("base_url cannot be empty")
+
+        try:
+            parsed_url = httpx.URL(normalized_base_url)
+        except Exception as error:
+            raise ValueError("base_url is not a valid URL") from error
+
+        if parsed_url.scheme not in {"http", "https"}:
+            raise ValueError("base_url must begin with http:// or https://")
+
+        if not parsed_url.host:
+            raise ValueError("base_url must include a host")
+
+        return normalized_base_url
+
+    @staticmethod
+    def _validate_positive_number(
         *,
-        base_url: str,
+        name: str,
+        value: float,
+        allow_zero: bool = False,
+    ) -> None:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"{name} must be a number")
+
+        numeric_value = float(value)
+
+        if not math.isfinite(numeric_value):
+            raise ValueError(f"{name} must be finite")
+
+        if allow_zero:
+            if numeric_value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        elif numeric_value <= 0:
+            raise ValueError(f"{name} must be greater than zero")
+
+    @classmethod
+    def _validate_configuration(
+        cls,
+        *,
         user_agent: str | None,
         user_agents: Sequence[str] | None,
         min_request_interval: float,
         max_retries: int,
+        connect_timeout: float,
+        read_timeout: float,
+        write_timeout: float,
+        pool_timeout: float,
+        max_connections: int,
+        max_keepalive_connections: int,
+        keepalive_expiry: float,
     ) -> None:
-        if not base_url.startswith(("http://", "https://")):
-            raise ValueError("base_url must begin with http:// or https://")
-
         if user_agent and user_agents:
             raise ValueError("Provide either user_agent or user_agents, not both")
 
@@ -209,11 +305,56 @@ class ExternalHttpClient:
                 "user_agents must be a sequence of strings, " "not a single string"
             )
 
-        if min_request_interval < 0:
-            raise ValueError("min_request_interval cannot be negative")
+        cls._validate_positive_number(
+            name="min_request_interval",
+            value=min_request_interval,
+            allow_zero=True,
+        )
+
+        if isinstance(max_retries, bool) or not isinstance(max_retries, int):
+            raise ValueError("max_retries must be an integer")
 
         if max_retries < 0:
             raise ValueError("max_retries cannot be negative")
+
+        for timeout_name, timeout_value in (
+            ("connect_timeout", connect_timeout),
+            ("read_timeout", read_timeout),
+            ("write_timeout", write_timeout),
+            ("pool_timeout", pool_timeout),
+        ):
+            cls._validate_positive_number(
+                name=timeout_name,
+                value=timeout_value,
+            )
+
+        if isinstance(max_connections, bool) or not isinstance(
+            max_connections,
+            int,
+        ):
+            raise ValueError("max_connections must be an integer")
+
+        if max_connections < 1:
+            raise ValueError("max_connections must be at least 1")
+
+        if isinstance(max_keepalive_connections, bool) or not isinstance(
+            max_keepalive_connections,
+            int,
+        ):
+            raise ValueError("max_keepalive_connections must be an integer")
+
+        if max_keepalive_connections < 0:
+            raise ValueError("max_keepalive_connections cannot be negative")
+
+        if max_keepalive_connections > max_connections:
+            raise ValueError(
+                "max_keepalive_connections cannot exceed " "max_connections"
+            )
+
+        cls._validate_positive_number(
+            name="keepalive_expiry",
+            value=keepalive_expiry,
+        )
 
     @classmethod
     def _select_user_agent(
@@ -226,11 +367,16 @@ class ExternalHttpClient:
             return cls._validate_user_agent(user_agent)
 
         if user_agents:
-            valid_user_agents = [
-                cls._validate_user_agent(value)
-                for value in user_agents
-                if value and value.strip()
-            ]
+            valid_user_agents: list[str] = []
+
+            for value in user_agents:
+                if not isinstance(value, str):
+                    raise ValueError("Every user_agents item must be a string")
+
+                if not value.strip():
+                    continue
+
+                valid_user_agents.append(cls._validate_user_agent(value))
 
             if not valid_user_agents:
                 raise ValueError("user_agents does not contain a valid value")
@@ -253,27 +399,91 @@ class ExternalHttpClient:
 
         return normalized_user_agent
 
+    def _begin_request(self) -> None:
+        with self._lifecycle_condition:
+            if self._closed:
+                raise ExternalClientError("External HTTP client is already closed")
+
+            self._active_requests += 1
+
+    def _end_request(self) -> None:
+        with self._lifecycle_condition:
+            self._active_requests -= 1
+            self._lifecycle_condition.notify_all()
+
     def _wait_for_request_slot(self) -> None:
         """
-        Enforce the configured minimum interval between
-        the starting time of requests.
+        Enforce one global minimum interval between request start times.
+
+        All worker threads sharing this client also share this limiter and
+        any active rate-limit cooldown.
         """
-        with self._request_lock:
-            if self._last_request_started_at is not None:
-                elapsed = time.monotonic() - self._last_request_started_at
+        with self._rate_condition:
+            while True:
+                if self._closed:
+                    raise ExternalClientError(
+                        "External HTTP client was closed while waiting "
+                        "for a request slot"
+                    )
 
-                remaining = self.min_request_interval - elapsed
+                current_time = time.monotonic()
 
-                if remaining > 0:
-                    time.sleep(remaining)
+                interval_ready_at = current_time
 
-            self._last_request_started_at = time.monotonic()
+                if self._last_request_started_at is not None:
+                    interval_ready_at = (
+                        self._last_request_started_at + self.min_request_interval
+                    )
+
+                next_request_at = max(
+                    current_time,
+                    interval_ready_at,
+                    self._blocked_until,
+                )
+
+                remaining = next_request_at - current_time
+
+                if remaining <= 0:
+                    self._last_request_started_at = current_time
+                    return
+
+                self._rate_condition.wait(timeout=remaining)
+
+    def _set_global_cooldown(
+        self,
+        delay: float,
+    ) -> None:
+        if delay <= 0:
+            return
+
+        with self._rate_condition:
+            self._blocked_until = max(
+                self._blocked_until,
+                time.monotonic() + delay,
+            )
+
+            # Wake waiting workers so they recalculate against the new,
+            # possibly later cooldown deadline.
+            self._rate_condition.notify_all()
+
+    def _sleep_before_retry(
+        self,
+        delay: float,
+    ) -> None:
+        if delay <= 0:
+            return
+
+        if self._close_event.wait(timeout=delay):
+            raise ExternalClientError(
+                "External HTTP client was closed during retry backoff"
+            )
 
     @staticmethod
     def _calculate_backoff(
         attempt: int,
     ) -> float:
-        base_delay = min(2**attempt, 30)
+        # attempt starts at 1, producing approximately 1s, 2s, 4s, 8s...
+        base_delay = min(2 ** (attempt - 1), 30)
         jitter = random.uniform(0.1, 0.8)
 
         return base_delay + jitter
@@ -319,12 +529,10 @@ class ExternalHttpClient:
     def _safe_url(
         url: httpx.URL,
     ) -> str:
-        """
-        Return a URL without query parameters for normal logs.
-        """
+        """Return a URL without query parameters for normal logs."""
         port = f":{url.port}" if url.port else ""
 
-        return f"{url.scheme}://" f"{url.host}" f"{port}" f"{url.path}"
+        return f"{url.scheme}://{url.host}{port}{url.path}"
 
     @classmethod
     def _is_sensitive_field(
@@ -406,7 +614,7 @@ class ExternalHttpClient:
         try:
             decoded_content = content.decode("utf-8")
         except UnicodeDecodeError:
-            return f"<binary body: " f"{len(content)} bytes>"
+            return f"<binary body: {len(content)} bytes>"
 
         if include_sensitive_data:
             return decoded_content
@@ -428,7 +636,7 @@ class ExternalHttpClient:
                 )
 
             except json_lib.JSONDecodeError:
-                return decoded_content
+                return "<unparseable JSON body omitted>"
 
         if "application/x-www-form-urlencoded" in content_type:
             form_items = parse_qsl(
@@ -440,7 +648,7 @@ class ExternalHttpClient:
                 [
                     (
                         key,
-                        "<redacted>" if cls._is_sensitive_field(key) else value,
+                        ("<redacted>" if cls._is_sensitive_field(key) else value),
                     )
                     for key, value in form_items
                 ],
@@ -481,32 +689,71 @@ class ExternalHttpClient:
             "headers": request_headers,
             "body": cls._request_body_for_snapshot(
                 request,
-                include_sensitive_data=(include_sensitive_data),
+                include_sensitive_data=include_sensitive_data,
             ),
         }
 
-    @staticmethod
+    def _get_snapshot_lock(
+        self,
+        file_path: Path,
+    ) -> threading.Lock:
+        normalized_path = file_path.expanduser().resolve()
+
+        with self._snapshot_locks_guard:
+            lock = self._snapshot_locks.get(normalized_path)
+
+            if lock is None:
+                lock = threading.Lock()
+                self._snapshot_locks[normalized_path] = lock
+
+            return lock
+
     def _save_request_snapshots(
+        self,
         file_path: str | Path,
         snapshots: list[dict[str, Any]],
     ) -> None:
         output_file = Path(file_path)
-
         output_file.parent.mkdir(
             parents=True,
             exist_ok=True,
         )
 
-        output_file.write_text(
-            json_lib.dumps(
-                {
-                    "requests": snapshots,
-                },
-                indent=2,
-                ensure_ascii=False,
-            ),
-            encoding="utf-8",
+        serialized_data = json_lib.dumps(
+            {
+                "requests": snapshots,
+            },
+            indent=2,
+            ensure_ascii=False,
         )
+
+        file_lock = self._get_snapshot_lock(output_file)
+
+        temporary_path: Path | None = None
+
+        with file_lock:
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w",
+                    encoding="utf-8",
+                    dir=output_file.parent,
+                    prefix=f".{output_file.name}.",
+                    suffix=".tmp",
+                    delete=False,
+                ) as temporary_file:
+                    temporary_path = Path(temporary_file.name)
+
+                    temporary_file.write(serialized_data)
+                    temporary_file.flush()
+                    os.fsync(temporary_file.fileno())
+
+                temporary_path.replace(output_file)
+
+            except Exception:
+                if temporary_path is not None:
+                    temporary_path.unlink(missing_ok=True)
+
+                raise
 
     @staticmethod
     def _response_preview(
@@ -539,7 +786,6 @@ class ExternalHttpClient:
         response: httpx.Response,
     ) -> None:
         status_code = response.status_code
-
         safe_url = self._safe_url(response.request.url)
 
         if status_code in self.ACCESS_DENIED_STATUS_CODES:
@@ -556,12 +802,60 @@ class ExternalHttpClient:
 
         if not 200 <= status_code < 300:
             raise ExternalResponseError(
-                "External website returned an "
-                "unsuccessful response: "
+                "External website returned an unsuccessful response: "
                 f"status={status_code}, "
                 f"url={safe_url}, "
-                f"preview="
-                f"{self._response_preview(response)!r}"
+                f"preview={self._response_preview(response)!r}"
+            )
+
+    def _build_request(
+        self,
+        *,
+        method: str,
+        endpoint: str,
+        params: Mapping[str, Any] | None,
+        headers: Mapping[str, str] | None,
+        json: Any,
+        data: Any,
+        content: bytes | str | None,
+        files: Mapping[str, Any] | None,
+    ) -> httpx.Request:
+        if not endpoint:
+            raise ValueError("endpoint cannot be empty")
+
+        with self._client_configuration_lock:
+            if self._closed:
+                raise ExternalClientError("External HTTP client is already closed")
+
+            try:
+                return self.client.build_request(
+                    method=method,
+                    url=endpoint,
+                    params=params,
+                    headers=dict(headers or {}),
+                    json=json,
+                    data=data,
+                    content=content,
+                    files=files,
+                )
+            except httpx.InvalidURL as error:
+                raise ExternalClientError(
+                    "Cannot prepare external request because the URL "
+                    f"is invalid: endpoint={endpoint!r}"
+                ) from error
+
+    def _print_request_snapshot(
+        self,
+        snapshot: dict[str, Any],
+    ) -> None:
+        with self._console_lock:
+            print("\nPrepared external request:")
+            print(
+                json_lib.dumps(
+                    snapshot,
+                    indent=2,
+                    ensure_ascii=False,
+                )
             )
 
     def request(
@@ -579,134 +873,47 @@ class ExternalHttpClient:
         request_log_file: str | Path | None = None,
         include_sensitive_request_data: bool = False,
     ) -> httpx.Response:
-        method = method.upper()
+        normalized_method = method.strip().upper()
+
+        if not normalized_method:
+            raise ValueError("method cannot be empty")
 
         total_attempts = self.max_retries + 1
         last_exception: Exception | None = None
-
         request_snapshots: list[dict[str, Any]] = []
 
-        for attempt in range(
-            1,
-            total_attempts + 1,
-        ):
-            self._wait_for_request_slot()
+        self._begin_request()
 
-            started_at = time.monotonic()
-
-            request = self.client.build_request(
-                method=method,
-                url=endpoint,
-                params=params,
-                headers=dict(headers or {}),
-                json=json,
-                data=data,
-                content=content,
-                files=files,
-            )
-
-            snapshot = self._create_request_snapshot(
-                request,
-                attempt=attempt,
-                include_sensitive_data=(include_sensitive_request_data),
-            )
-
-            request_snapshots.append(snapshot)
-
-            if show_request:
-                print("\nPrepared external request:")
-
-                print(
-                    json_lib.dumps(
-                        snapshot,
-                        indent=2,
-                        ensure_ascii=False,
-                    )
-                )
-
-            if request_log_file is not None:
-                self._save_request_snapshots(
-                    request_log_file,
-                    request_snapshots,
-                )
-
-            try:
-                response = self.client.send(request)
-
-                duration = time.monotonic() - started_at
-
-                snapshot["response_status"] = response.status_code
-
-                snapshot["duration_seconds"] = round(duration, 4)
-
-                if request_log_file is not None:
-                    self._save_request_snapshots(
-                        request_log_file,
-                        request_snapshots,
-                    )
-
-                safe_url = self._safe_url(response.request.url)
-
-                logger_service.info(
-                    (
-                        "External request completed: "
-                        f"method={method}, "
-                        f"url={safe_url}, "
-                        f"status="
-                        f"{response.status_code}, "
-                        f"duration={duration:.2f}s, "
-                        f"attempt="
-                        f"{attempt}/{total_attempts}"
-                    ),
-                    context=self.__class__.__name__,
-                )
-
-                if response.status_code not in self.RETRYABLE_STATUS_CODES:
-                    self._raise_for_response(response)
-
-                    return response
-
-                if attempt >= total_attempts:
-                    self._raise_for_response(response)
-
-                retry_after = self._parse_retry_after(response)
-
-                retry_delay = (
-                    retry_after
-                    if retry_after is not None
-                    else self._calculate_backoff(attempt)
-                )
-
-                logger_service.info(
-                    (
-                        "Retryable response received: "
-                        f"method={method}, "
-                        f"url={safe_url}, "
-                        f"status="
-                        f"{response.status_code}, "
-                        f"retry_in="
-                        f"{retry_delay:.2f}s"
-                    ),
-                    context=self.__class__.__name__,
-                )
-
-                time.sleep(retry_delay)
-
-            except (
-                ExternalAccessDeniedError,
-                ExternalRateLimitError,
-                ExternalResponseError,
+        try:
+            for attempt in range(
+                1,
+                total_attempts + 1,
             ):
-                raise
+                self._wait_for_request_slot()
 
-            except httpx.RequestError as error:
-                duration = time.monotonic() - started_at
+                started_at = time.monotonic()
 
-                last_exception = error
+                request = self._build_request(
+                    method=normalized_method,
+                    endpoint=endpoint,
+                    params=params,
+                    headers=headers,
+                    json=json,
+                    data=data,
+                    content=content,
+                    files=files,
+                )
 
-                snapshot["duration_seconds"] = round(duration, 4)
+                snapshot = self._create_request_snapshot(
+                    request,
+                    attempt=attempt,
+                    include_sensitive_data=include_sensitive_request_data,
+                )
 
-                snapshot["error"] = str(error)
+                request_snapshots.append(snapshot)
+
+                if show_request:
+                    self._print_request_snapshot(snapshot)
 
                 if request_log_file is not None:
                     self._save_request_snapshots(
@@ -714,32 +921,155 @@ class ExternalHttpClient:
                         request_snapshots,
                     )
 
-                logger_service.error(
-                    (
-                        "External network request failed: "
-                        f"method={method}, "
+                try:
+                    response = self.client.send(request)
+
+                    duration = time.monotonic() - started_at
+                    safe_url = self._safe_url(response.request.url)
+
+                    snapshot["response_status"] = response.status_code
+                    snapshot["duration_seconds"] = round(duration, 4)
+
+                    if request_log_file is not None:
+                        self._save_request_snapshots(
+                            request_log_file,
+                            request_snapshots,
+                        )
+
+                    logger_service.info(
+                        (
+                            "External request completed: "
+                            f"method={normalized_method}, "
+                            f"url={safe_url}, "
+                            f"status={response.status_code}, "
+                            f"duration={duration:.2f}s, "
+                            f"attempt={attempt}/{total_attempts}"
+                        ),
+                        context=self.__class__.__name__,
+                    )
+
+                    if response.status_code not in self.RETRYABLE_STATUS_CODES:
+                        self._raise_for_response(response)
+                        return response
+
+                    if attempt >= total_attempts:
+                        self._raise_for_response(response)
+
+                    retry_after = self._parse_retry_after(response)
+                    retry_delay = (
+                        retry_after
+                        if retry_after is not None
+                        else self._calculate_backoff(attempt)
+                    )
+
+                    snapshot["retry_delay_seconds"] = round(
+                        retry_delay,
+                        4,
+                    )
+
+                    if request_log_file is not None:
+                        self._save_request_snapshots(
+                            request_log_file,
+                            request_snapshots,
+                        )
+
+                    logger_service.info(
+                        (
+                            "Retryable response received: "
+                            f"method={normalized_method}, "
+                            f"url={safe_url}, "
+                            f"status={response.status_code}, "
+                            f"retry_in={retry_delay:.2f}s"
+                        ),
+                        context=self.__class__.__name__,
+                    )
+
+                    if response.status_code == 429:
+                        # All workers using this client must pause before
+                        # starting another request.
+                        self._set_global_cooldown(retry_delay)
+                    else:
+                        self._sleep_before_retry(retry_delay)
+
+                except (
+                    ExternalAccessDeniedError,
+                    ExternalRateLimitError,
+                    ExternalResponseError,
+                ):
+                    raise
+
+                except self.RETRYABLE_REQUEST_EXCEPTIONS as error:
+                    duration = time.monotonic() - started_at
+                    last_exception = error
+
+                    snapshot["duration_seconds"] = round(duration, 4)
+                    snapshot["error_type"] = type(error).__name__
+                    snapshot["error"] = str(error)
+
+                    if request_log_file is not None:
+                        self._save_request_snapshots(
+                            request_log_file,
+                            request_snapshots,
+                        )
+
+                    logger_service.error(
+                        (
+                            "External network request failed: "
+                            f"method={normalized_method}, "
+                            f"endpoint={endpoint}, "
+                            f"duration={duration:.2f}s, "
+                            f"attempt={attempt}/{total_attempts}"
+                        ),
+                        exception=error,
+                        context=self.__class__.__name__,
+                    )
+
+                    if attempt >= total_attempts:
+                        break
+
+                    retry_delay = self._calculate_backoff(attempt)
+                    snapshot["retry_delay_seconds"] = round(
+                        retry_delay,
+                        4,
+                    )
+
+                    if request_log_file is not None:
+                        self._save_request_snapshots(
+                            request_log_file,
+                            request_snapshots,
+                        )
+
+                    self._sleep_before_retry(retry_delay)
+
+                except httpx.RequestError as error:
+                    duration = time.monotonic() - started_at
+
+                    snapshot["duration_seconds"] = round(duration, 4)
+                    snapshot["error_type"] = type(error).__name__
+                    snapshot["error"] = str(error)
+
+                    if request_log_file is not None:
+                        self._save_request_snapshots(
+                            request_log_file,
+                            request_snapshots,
+                        )
+
+                    raise ExternalClientError(
+                        "External request failed because of a "
+                        "non-retryable HTTP client error: "
+                        f"method={normalized_method}, "
                         f"endpoint={endpoint}, "
-                        f"duration={duration:.2f}s, "
-                        f"attempt="
-                        f"{attempt}/{total_attempts}"
-                    ),
-                    exception=error,
-                    context=self.__class__.__name__,
-                )
+                        f"error_type={type(error).__name__}"
+                    ) from error
 
-                if attempt >= total_attempts:
-                    break
+            raise ExternalClientError(
+                "External request failed after all retry attempts: "
+                f"method={normalized_method}, "
+                f"endpoint={endpoint}"
+            ) from last_exception
 
-                retry_delay = self._calculate_backoff(attempt)
-
-                time.sleep(retry_delay)
-
-        raise ExternalClientError(
-            "External request failed after all "
-            "retry attempts: "
-            f"method={method}, "
-            f"endpoint={endpoint}"
-        ) from last_exception
+        finally:
+            self._end_request()
 
     def get(
         self,
@@ -758,7 +1088,7 @@ class ExternalHttpClient:
             headers=headers,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
     def post(
@@ -782,7 +1112,7 @@ class ExternalHttpClient:
             data=data,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
     def put(
@@ -806,7 +1136,7 @@ class ExternalHttpClient:
             data=data,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
     def patch(
@@ -830,7 +1160,7 @@ class ExternalHttpClient:
             data=data,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
     def delete(
@@ -850,7 +1180,7 @@ class ExternalHttpClient:
             headers=headers,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
     def get_json(
@@ -869,7 +1199,7 @@ class ExternalHttpClient:
             headers=headers,
             show_request=show_request,
             request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+            include_sensitive_request_data=include_sensitive_request_data,
         )
 
         try:
@@ -877,13 +1207,11 @@ class ExternalHttpClient:
 
         except ValueError as error:
             raise ExternalJsonDecodeError(
-                "External website did not return "
-                "valid JSON: "
+                "External website did not return valid JSON: "
                 f"status={response.status_code}, "
-                f"content_type="
+                "content_type="
                 f"{response.headers.get('Content-Type')!r}, "
-                f"preview="
-                f"{self._response_preview(response)!r}"
+                f"preview={self._response_preview(response)!r}"
             ) from error
 
         if not isinstance(
@@ -892,8 +1220,7 @@ class ExternalHttpClient:
         ):
             raise ExternalJsonDecodeError(
                 "Expected a JSON object or array, "
-                f"but received "
-                f"{type(result).__name__}"
+                f"but received {type(result).__name__}"
             )
 
         return result
@@ -902,28 +1229,72 @@ class ExternalHttpClient:
         self,
         headers: Mapping[str, str],
     ) -> None:
-        self.client.headers.update(dict(headers))
+        with self._client_configuration_lock:
+            if self._closed:
+                raise ExternalClientError(
+                    "Cannot update headers because the client is closed"
+                )
+
+            self.client.headers.update(dict(headers))
 
     def update_cookies(
         self,
         cookies: Mapping[str, str],
     ) -> None:
-        self.client.cookies.update(dict(cookies))
+        with self._client_configuration_lock:
+            if self._closed:
+                raise ExternalClientError(
+                    "Cannot update cookies because the client is closed"
+                )
+
+            self.client.cookies.update(dict(cookies))
 
     def clear_cookies(self) -> None:
-        self.client.cookies.clear()
+        with self._client_configuration_lock:
+            if self._closed:
+                raise ExternalClientError(
+                    "Cannot clear cookies because the client is closed"
+                )
+
+            self.client.cookies.clear()
+
+    @property
+    def is_closed(self) -> bool:
+        return self._closed
 
     def close(self) -> None:
-        self.client.close()
+        with self._close_lock:
+            if self._client_closed:
+                return
 
-        logger_service.info(
-            "External HTTP client closed",
-            context=self.__class__.__name__,
-        )
+            with self._lifecycle_condition:
+                self._closed = True
+                self._close_event.set()
+
+            with self._rate_condition:
+                self._rate_condition.notify_all()
+
+            with self._lifecycle_condition:
+                while self._active_requests > 0:
+                    self._lifecycle_condition.wait()
+
+            with self._client_configuration_lock:
+                self.client.close()
+                self._client_closed = True
+
+            logger_service.info(
+                "External HTTP client closed",
+                context=self.__class__.__name__,
+            )
 
     def __enter__(
         self,
     ) -> ExternalHttpClient:
+        if self._closed:
+            raise ExternalClientError(
+                "Cannot enter context because the client is closed"
+            )
+
         return self
 
     def __exit__(

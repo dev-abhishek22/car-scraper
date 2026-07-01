@@ -261,7 +261,7 @@ def scrape_carwale_model(
     }
 
     files = JsonStorage.save(
-        directory="data/raw/carwale/models",
+        directory=output_dir,
         file_name=masking_name,
         data=payload,
         create_archive=True,
