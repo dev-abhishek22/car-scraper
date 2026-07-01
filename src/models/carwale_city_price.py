@@ -12,20 +12,50 @@ class CarWaleCityPrice(BaseModel):
         extra="ignore",
     )
 
-    version_id: int = Field(alias="versionId")
-    city_id: int = Field(alias="cityId")
+    version_id: int = Field(
+        alias="versionId",
+        gt=0,
+    )
 
-    make_masking_name: str = Field(alias="makeMaskingName")
-    model_masking_name: str = Field(alias="modelMaskingName")
-    city_masking_name: str = Field(alias="cityMaskingName")
+    city_id: int = Field(
+        alias="cityId",
+        gt=0,
+    )
 
-    version_details: dict[str, Any] = Field(alias="versionDetails")
-    price_breakup: list[dict[str, Any]] = Field(alias="priceBreakup")
+    make_masking_name: str = Field(
+        alias="makeMaskingName",
+        min_length=1,
+    )
+
+    model_masking_name: str = Field(
+        alias="modelMaskingName",
+        min_length=1,
+    )
+
+    city_masking_name: str = Field(
+        alias="cityMaskingName",
+        min_length=1,
+    )
+
+    version_details: dict[str, Any] = Field(
+        alias="versionDetails",
+    )
+
+    price_breakup: list[dict[str, Any]] = Field(
+        alias="priceBreakup",
+    )
 
     scraped_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         alias="scrapedAt",
     )
+
+    @property
+    def document_id(self) -> str:
+        """
+        Permanent MongoDB document ID for one version-city combination.
+        """
+        return f"v:{self.version_id}:" f"c:{self.city_id}"
 
     def to_mongo_document(self) -> dict[str, Any]:
         return self.model_dump(

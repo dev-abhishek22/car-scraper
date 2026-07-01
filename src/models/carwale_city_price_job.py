@@ -12,8 +12,13 @@ class CarWaleCityPriceJob(BaseModel):
         str_strip_whitespace=True,
     )
 
-    version_id: int = Field(gt=0)
-    city_id: int = Field(gt=0)
+    version_id: int = Field(
+        gt=0,
+    )
+
+    city_id: int = Field(
+        gt=0,
+    )
 
     make_masking_name: str = Field(
         min_length=1,
@@ -32,4 +37,10 @@ class CarWaleCityPriceJob(BaseModel):
 
     @property
     def item_key(self) -> str:
-        return f"{self.version_id}:{self.city_id}"
+        """
+        Permanent identifier for one version-city combination.
+
+        This same value is used as the MongoDB document _id
+        for successful city-price records.
+        """
+        return f"v:{self.version_id}:" f"c:{self.city_id}"

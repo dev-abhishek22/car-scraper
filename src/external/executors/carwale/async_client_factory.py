@@ -16,8 +16,8 @@ def create_carwale_async_client(
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
 
-    if concurrency > 100:
-        raise ValueError("concurrency cannot exceed 100")
+    if concurrency > 1000:
+        raise ValueError("concurrency cannot exceed 1000")
 
     if requests_per_second <= 0:
         raise ValueError("requests_per_second must be greater than zero")
