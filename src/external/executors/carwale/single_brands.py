@@ -213,7 +213,7 @@ def scrape_carwale_model(
 
     headers: dict[str, str] = {
         **endpoint.default_headers,
-        "Referer": (f"{CARWALE_BASE_URL}/" f"{masking_name}-cars/"),
+        "Referer": (f"{CARWALE_BASE_URL}/{masking_name}-cars/"),
     }
 
     request_log_file: Path | None = None
@@ -228,11 +228,7 @@ def scrape_carwale_model(
         request_log_file = requests_directory / f"{masking_name}.json"
 
     logger_service.info(
-        (
-            "Scraping CarWale models: "
-            f"brand={make_name}, "
-            f"masking_name={masking_name}"
-        ),
+        (f"Scraping CarWale models: brand={make_name}, masking_name={masking_name}"),
         context="CarWaleModelExecutor",
     )
 
@@ -266,7 +262,7 @@ def scrape_carwale_model(
         data=payload,
         create_archive=True,
         archive_directory="data/raw/carwale/archive/models",
-    )   
+    )
 
     logger_service.info(
         (
@@ -278,7 +274,6 @@ def scrape_carwale_model(
         ),
         context="CarWaleModelExecutor",
     )
-
 
     return {
         "status": "success",

@@ -50,10 +50,10 @@ def _load_brands(
     input_file = Path(brands_file)
 
     if not input_file.exists():
-        raise FileNotFoundError("CarWale brands file was not found: " f"{input_file}")
+        raise FileNotFoundError(f"CarWale brands file was not found: {input_file}")
 
     if not input_file.is_file():
-        raise ValueError("CarWale brands path is not a file: " f"{input_file}")
+        raise ValueError(f"CarWale brands path is not a file: {input_file}")
 
     try:
         payload = json.loads(
@@ -64,7 +64,7 @@ def _load_brands(
 
     except json.JSONDecodeError as error:
         raise ValueError(
-            "CarWale brands file contains invalid JSON: " f"{input_file}"
+            f"CarWale brands file contains invalid JSON: {input_file}"
         ) from error
 
     brands_data: Any = payload
@@ -84,11 +84,11 @@ def _load_brands(
 
         else:
             raise ValueError(
-                "CarWale brands file does not contain " "a brands or makeList array"
+                "CarWale brands file does not contain a brands or makeList array"
             )
 
     if not isinstance(brands_data, list):
-        raise ValueError("CarWale brands file must contain " "a JSON array")
+        raise ValueError("CarWale brands file must contain a JSON array")
 
     brands: list[dict[str, Any]] = []
 
@@ -107,9 +107,7 @@ def _load_brands(
         brands.append(brand)
 
     if not brands:
-        raise ValueError(
-            "CarWale brands file does not contain " "any valid brand objects"
-        )
+        raise ValueError("CarWale brands file does not contain any valid brand objects")
 
     return brands
 
@@ -305,7 +303,7 @@ def scrape_carwale_models(
         )
 
         logger_service.info(
-            ("No CarWale brands were selected: " f"mode={mode}"),
+            (f"No CarWale brands were selected: mode={mode}"),
             context="CarWaleModelsExecutor",
         )
 
@@ -487,12 +485,7 @@ def scrape_carwale_models(
             )
 
             logger_service.info(
-                (
-                    "Waiting before next "
-                    "CarWale brand: "
-                    f"delay="
-                    f"{request_delay:.2f}s"
-                ),
+                (f"Waiting before next CarWale brand: delay={request_delay:.2f}s"),
                 context=("CarWaleModelsExecutor"),
             )
 

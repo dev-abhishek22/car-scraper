@@ -14,12 +14,17 @@ class Settings(BaseSettings):
     )
 
     APP_NAME: str = "car-api-scraper"
-    APP_ENV: Literal["development", "test", "production"] = "development"
+    APP_ENV: Literal[
+        "development",
+        "test",
+        "production",
+    ] = "development"
 
     LOG_LEVEL: str = "DEBUG"
     LOG_DIR: str = "logs"
     SQL_LOGGING: bool = False
 
+    # MySQL
     DB_HOST: str
     DB_PORT: int = 3306
     DB_USERNAME: str
@@ -31,6 +36,19 @@ class Settings(BaseSettings):
     DB_POOL_TIMEOUT: int = 30
     DB_POOL_RECYCLE: int = 1800
 
+    # MongoDB
+    MONGO_URI: SecretStr | None = None
+    MONGO_DATABASE: str = "car_api_scraper"
+
+    MONGO_MIN_POOL_SIZE: int = 1
+    MONGO_MAX_POOL_SIZE: int = 20
+
+    MONGO_SERVER_SELECTION_TIMEOUT_MS: int = 5_000
+    MONGO_CONNECT_TIMEOUT_MS: int = 10_000
+    MONGO_SOCKET_TIMEOUT_MS: int = 30_000
+    MONGO_WAIT_QUEUE_TIMEOUT_MS: int = 10_000
+
+    # External APIs
     API_TIMEOUT: float = 30
     API_MAX_RETRIES: int = 3
 
@@ -43,6 +61,27 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def mongo_uri(self) -> str:
+        if self.MONGO_URI is None:
+            raise ValueError("MONGO_URI is not configured")
+
+        uri = self.MONGO_URI.get_secret_value().strip()
+
+        if not uri:
+            raise ValueError("MONGO_URI cannot be empty")
+
+        return uri
+
+    @property
+    def mongo_database(self) -> str:
+        database = self.MONGO_DATABASE.strip()
+
+        if not database:
+            raise ValueError("MONGO_DATABASE cannot be empty")
+
+        return database
 
 
 @lru_cache

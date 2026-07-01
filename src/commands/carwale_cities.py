@@ -86,10 +86,10 @@ def run_carwale_cities(
             float,
         ),
     ):
-        raise TypeError("min_request_interval must be " "a number")
+        raise TypeError("min_request_interval must be a number")
 
     if min_request_interval < 0:
-        raise ValueError("min_request_interval cannot be " "negative")
+        raise ValueError("min_request_interval cannot be negative")
 
     request_log_file: Path | None = None
 

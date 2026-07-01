@@ -91,7 +91,7 @@ class JsonStorage:
             archive_file = (
                 archive_base_directory
                 / date_directory
-                / (f"{normalized_file_name}_" f"{timestamp}.json")
+                / (f"{normalized_file_name}_{timestamp}.json")
             )
 
             cls._write_atomically(

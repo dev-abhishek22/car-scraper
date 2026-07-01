@@ -1,3 +1,7 @@
+from src.clients.async_client import (
+    AsyncClientMetrics,
+    AsyncExternalHttpClient,
+)
 from src.clients.client import (
     ExternalAccessDeniedError,
     ExternalClientError,
@@ -9,6 +13,8 @@ from src.clients.client import (
 
 __all__ = [
     "ExternalHttpClient",
+    "AsyncExternalHttpClient",
+    "AsyncClientMetrics",
     "ExternalClientError",
     "ExternalAccessDeniedError",
     "ExternalRateLimitError",

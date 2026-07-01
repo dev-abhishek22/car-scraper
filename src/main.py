@@ -1,4 +1,4 @@
-from src.databases.database import db_connection, engine
+from src.databases.database import db_connection
 from src.logger.logger import logger_service
 
 

@@ -81,7 +81,7 @@ class ScrapeStatusStore:
             return self._default_data()
 
         if not self.status_file.is_file():
-            raise ValueError("Scrape status path is not a file: " f"{self.status_file}")
+            raise ValueError(f"Scrape status path is not a file: {self.status_file}")
 
         try:
             payload = json.loads(
@@ -92,11 +92,11 @@ class ScrapeStatusStore:
 
         except json.JSONDecodeError as error:
             raise ValueError(
-                "Scrape status file contains invalid JSON: " f"{self.status_file}"
+                f"Scrape status file contains invalid JSON: {self.status_file}"
             ) from error
 
         if not isinstance(payload, dict):
-            raise ValueError("Scrape status file must contain " "a JSON object")
+            raise ValueError("Scrape status file must contain a JSON object")
 
         existing_resource = payload.get("resource")
 
@@ -116,7 +116,7 @@ class ScrapeStatusStore:
             payload["items"] = {}
 
         elif not isinstance(items, dict):
-            raise ValueError("Scrape status items field must " "be a JSON object")
+            raise ValueError("Scrape status items field must be a JSON object")
 
         payload.setdefault(
             "schemaVersion",
@@ -262,7 +262,7 @@ class ScrapeStatusStore:
             raise ValueError("selected_items cannot be negative")
 
         if total_available_items is not None and total_available_items < 0:
-            raise ValueError("total_available_items cannot " "be negative")
+            raise ValueError("total_available_items cannot be negative")
 
         self._close_interrupted_run()
 

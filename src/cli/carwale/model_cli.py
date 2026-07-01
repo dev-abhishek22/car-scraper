@@ -47,7 +47,7 @@ def add_carwale_models_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-models",
-        help=("Fetch CarWale models for one or " "multiple brands"),
+        help=("Fetch CarWale models for one or multiple brands"),
         description=(
             "Read brands from the saved CarWale "
             "brands file and fetch only the models "
@@ -63,25 +63,21 @@ def add_carwale_models_command(
         default=None,
         metavar="MASKING_NAME",
         help=(
-            "Scrape only one brand using its "
-            "maskingName, for example "
-            "'maruti-suzuki'."
+            "Scrape only one brand using its maskingName, for example 'maruti-suzuki'."
         ),
     )
 
     selection_group.add_argument(
         "--failed-only",
         action="store_true",
-        help=("Scrape only brands currently marked " "as failed in the status file."),
+        help=("Scrape only brands currently marked as failed in the status file."),
     )
 
     parser.add_argument(
         "--brands-file",
         type=str,
         default=str(DEFAULT_BRANDS_FILE),
-        help=(
-            "Path to the CarWale brands JSON file. " f"Default: {DEFAULT_BRANDS_FILE}"
-        ),
+        help=(f"Path to the CarWale brands JSON file. Default: {DEFAULT_BRANDS_FILE}"),
     )
 
     parser.add_argument(
@@ -100,9 +96,7 @@ def add_carwale_models_command(
         type=str,
         default=str(DEFAULT_STATUS_FILE),
         help=(
-            "Path to the models scraping status "
-            "file. "
-            f"Default: {DEFAULT_STATUS_FILE}"
+            f"Path to the models scraping status file. Default: {DEFAULT_STATUS_FILE}"
         ),
     )
 
@@ -121,19 +115,19 @@ def add_carwale_models_command(
     parser.add_argument(
         "--force",
         action="store_true",
-        help=("Scrape again and overwrite existing " "model files."),
+        help=("Scrape again and overwrite existing model files."),
     )
 
     parser.add_argument(
         "--show-request",
         action="store_true",
-        help=("Print each prepared HTTP request " "before sending it."),
+        help=("Print each prepared HTTP request before sending it."),
     )
 
     parser.add_argument(
         "--save-request",
         action="store_true",
-        help=("Save prepared HTTP request snapshots " "to the request directory."),
+        help=("Save prepared HTTP request snapshots to the request directory."),
     )
 
     parser.add_argument(
@@ -141,9 +135,7 @@ def add_carwale_models_command(
         type=float,
         default=2.0,
         metavar="SECONDS",
-        help=(
-            "Minimum delay between brands when " "scraping multiple brands. Default: 2"
-        ),
+        help=("Minimum delay between brands when scraping multiple brands. Default: 2"),
     )
 
     parser.add_argument(
@@ -151,9 +143,7 @@ def add_carwale_models_command(
         type=float,
         default=4.0,
         metavar="SECONDS",
-        help=(
-            "Maximum delay between brands when " "scraping multiple brands. Default: 4"
-        ),
+        help=("Maximum delay between brands when scraping multiple brands. Default: 4"),
     )
 
     parser.set_defaults(

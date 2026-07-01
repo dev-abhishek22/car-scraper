@@ -302,7 +302,7 @@ class ExternalHttpClient:
 
         if isinstance(user_agents, str):
             raise ValueError(
-                "user_agents must be a sequence of strings, " "not a single string"
+                "user_agents must be a sequence of strings, not a single string"
             )
 
         cls._validate_positive_number(
@@ -347,9 +347,7 @@ class ExternalHttpClient:
             raise ValueError("max_keepalive_connections cannot be negative")
 
         if max_keepalive_connections > max_connections:
-            raise ValueError(
-                "max_keepalive_connections cannot exceed " "max_connections"
-            )
+            raise ValueError("max_keepalive_connections cannot exceed max_connections")
 
         cls._validate_positive_number(
             name="keepalive_expiry",
@@ -797,7 +795,7 @@ class ExternalHttpClient:
 
         if status_code == 429:
             raise ExternalRateLimitError(
-                "External website rate limit was exceeded: " f"url={safe_url}"
+                f"External website rate limit was exceeded: url={safe_url}"
             )
 
         if not 200 <= status_code < 300:
@@ -1219,8 +1217,7 @@ class ExternalHttpClient:
             (dict, list),
         ):
             raise ExternalJsonDecodeError(
-                "Expected a JSON object or array, "
-                f"but received {type(result).__name__}"
+                f"Expected a JSON object or array, but received {type(result).__name__}"
             )
 
         return result

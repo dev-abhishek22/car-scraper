@@ -49,8 +49,7 @@ def configure_sql_logging() -> None:
     sqlalchemy_logger = logging.getLogger("sqlalchemy.engine")
 
     has_sqlalchemy_handler = any(
-        isinstance(handler, SQLAlchemyHandler)
-        for handler in sqlalchemy_logger.handlers
+        isinstance(handler, SQLAlchemyHandler) for handler in sqlalchemy_logger.handlers
     )
 
     if not has_sqlalchemy_handler:

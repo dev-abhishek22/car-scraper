@@ -14,7 +14,7 @@ def add_cleanup_command(
 ) -> None:
     parser = subparsers.add_parser(
         "clean-expired-files",
-        help=("Delete expired JSON files from " "archive directories"),
+        help=("Delete expired JSON files from archive directories"),
         description=(
             "Find JSON files inside directories named "
             "'archive' and delete files older than the "
@@ -53,9 +53,9 @@ def print_cleanup_result(
 ) -> None:
     print()
     print(f"Command: {result['command']}")
-    print(f"Root directory: " f"{result['root_directory']}")
-    print(f"Retention: " f"{result['retention_days']} days")
-    print(f"Expired files found: " f"{result['files_count']}")
+    print(f"Root directory: {result['root_directory']}")
+    print(f"Retention: {result['retention_days']} days")
+    print(f"Expired files found: {result['files_count']}")
 
     files = result["files"]
 
@@ -69,6 +69,6 @@ def print_cleanup_result(
     print()
 
     if result["dry_run"]:
-        print("Status: dry run completed; " "no files were deleted")
+        print("Status: dry run completed; no files were deleted")
     else:
         print("Status: cleanup completed")

@@ -85,7 +85,7 @@ def _normalize_optional_slug(
 
     if not MASKING_NAME_PATTERN.fullmatch(normalized_value):
         raise ValueError(
-            f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+            f"{field_name} contains invalid characters: {normalized_value!r}"
         )
 
     return normalized_value
@@ -106,7 +106,7 @@ def _normalize_required_slug(
 
     if not MASKING_NAME_PATTERN.fullmatch(normalized_value):
         raise ValueError(
-            f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+            f"{field_name} contains invalid characters: {normalized_value!r}"
         )
 
     return normalized_value
@@ -116,10 +116,10 @@ def _read_model_file(
     input_file: Path,
 ) -> dict[str, Any]:
     if not input_file.exists():
-        raise FileNotFoundError("CarWale model file was not found: " f"{input_file}")
+        raise FileNotFoundError(f"CarWale model file was not found: {input_file}")
 
     if not input_file.is_file():
-        raise ValueError("CarWale model path is not a file: " f"{input_file}")
+        raise ValueError(f"CarWale model path is not a file: {input_file}")
 
     try:
         payload = json.loads(
@@ -130,13 +130,11 @@ def _read_model_file(
 
     except json.JSONDecodeError as error:
         raise ValueError(
-            "CarWale model file contains invalid " f"JSON: {input_file}"
+            f"CarWale model file contains invalid JSON: {input_file}"
         ) from error
 
     if not isinstance(payload, dict):
-        raise ValueError(
-            "CarWale model file must contain a " f"JSON object: {input_file}"
-        )
+        raise ValueError(f"CarWale model file must contain a JSON object: {input_file}")
 
     return payload
 
@@ -148,13 +146,11 @@ def _discover_model_files(
 
     if not input_directory.exists():
         raise FileNotFoundError(
-            "CarWale models directory was not " f"found: {input_directory}"
+            f"CarWale models directory was not found: {input_directory}"
         )
 
     if not input_directory.is_dir():
-        raise ValueError(
-            "CarWale models path is not a " f"directory: {input_directory}"
-        )
+        raise ValueError(f"CarWale models path is not a directory: {input_directory}")
 
     model_files = sorted(
         file_path for file_path in input_directory.glob("*.json") if file_path.is_file()
@@ -273,7 +269,7 @@ def _extract_jobs(
                             "file": str(input_file),
                             "modelIndex": (model_index),
                             "errorType": ("ValueError"),
-                            "errorMessage": ("Model entry is not " "a JSON object"),
+                            "errorMessage": ("Model entry is not a JSON object"),
                         }
                     )
                     continue
@@ -300,11 +296,11 @@ def _extract_jobs(
 
                 matching_model_found = True
 
-                item_key = f"{make_masking_name}/" f"{model_masking_name}"
+                item_key = f"{make_masking_name}/{model_masking_name}"
 
                 if item_key in seen_keys:
                     logger_service.info(
-                        ("Ignoring duplicate " "CarWale car job: " f"key={item_key}"),
+                        (f"Ignoring duplicate CarWale car job: key={item_key}"),
                         context=("CarWaleCarsCommand"),
                     )
                     continue
@@ -363,16 +359,14 @@ def _extract_jobs(
             )
 
             logger_service.error(
-                ("Ignoring invalid CarWale " "model input file: " f"file={input_file}"),
+                (f"Ignoring invalid CarWale model input file: file={input_file}"),
                 exception=error,
                 context="CarWaleCarsCommand",
             )
 
     if selected_brand is not None and not matching_brand_found:
         raise ValueError(
-            "CarWale brand was not found in the "
-            "models directory: "
-            f"{selected_brand!r}"
+            f"CarWale brand was not found in the models directory: {selected_brand!r}"
         )
 
     if selected_model is not None and not matching_model_found:
@@ -435,7 +429,7 @@ def _build_jobs(
                 model_id=model_id,
                 model_name=model_name,
                 model_masking_name=(model_masking_name),
-                item_key=(f"{make_masking_name}/" f"{model_masking_name}"),
+                item_key=(f"{make_masking_name}/{model_masking_name}"),
                 position=position,
                 total_selected=(total_selected),
             )
@@ -648,7 +642,7 @@ def run_carwale_cars(
         raise ValueError("--model requires --brand")
 
     if failed_only and (normalized_brand is not None or normalized_model is not None):
-        raise ValueError("--failed-only cannot be combined " "with --brand or --model")
+        raise ValueError("--failed-only cannot be combined with --brand or --model")
 
     if (
         not isinstance(workers, int)
@@ -656,10 +650,10 @@ def run_carwale_cars(
         or workers < 1
         or workers > 8
     ):
-        raise ValueError("workers must be an integer between " "1 and 8")
+        raise ValueError("workers must be an integer between 1 and 8")
 
     if min_request_interval < 0:
-        raise ValueError("min_request_interval cannot be " "negative")
+        raise ValueError("min_request_interval cannot be negative")
 
     if city_id <= 0:
         raise ValueError("city_id must be greater than zero")
@@ -872,9 +866,7 @@ def run_carwale_cars(
                             dict,
                         ):
                             raise ValueError(
-                                "Model-page executor "
-                                "did not return a "
-                                "valid payload"
+                                "Model-page executor did not return a valid payload"
                             )
 
                         saved_files = _save_car_payload(
@@ -947,7 +939,7 @@ def run_carwale_cars(
                         )
 
                         logger_service.error(
-                            ("CarWale car " "scraping failed: " f"key={job.item_key}"),
+                            (f"CarWale car scraping failed: key={job.item_key}"),
                             exception=error,
                             context=("CarWaleCarsCommand"),
                         )

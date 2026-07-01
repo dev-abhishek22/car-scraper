@@ -42,7 +42,7 @@ class CarWaleBrandsExecutor(BaseApiExecutor):
         }
 
         if CARWALE_NEW_CARS.method != "GET":
-            raise RuntimeError("Unexpected method configured for " "CarWale brands API")
+            raise RuntimeError("Unexpected method configured for CarWale brands API")
 
         response = self.client.get_json(
             endpoint=CARWALE_NEW_CARS.path,
@@ -60,7 +60,7 @@ class CarWaleBrandsExecutor(BaseApiExecutor):
 
         if not isinstance(make_list, list):
             raise ExternalResponseError(
-                "CarWale response does not contain a valid " "'makeList' array"
+                "CarWale response does not contain a valid 'makeList' array"
             )
 
         return make_list

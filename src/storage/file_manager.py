@@ -59,7 +59,7 @@ class JsonFileManager:
             exist_ok=True,
         )
 
-        return output_directory / (f"{safe_file_name}_" f"{timestamp_suffix}.json")
+        return output_directory / (f"{safe_file_name}_{timestamp_suffix}.json")
 
     @staticmethod
     def save_json(
@@ -86,7 +86,7 @@ class JsonFileManager:
 
         except OSError as error:
             raise FileStorageError(
-                f"Unable to write JSON file: " f"{output_file}"
+                f"Unable to write JSON file: {output_file}"
             ) from error
 
         return output_file
@@ -127,7 +127,7 @@ class JsonFileManager:
 
             except OSError as error:
                 raise FileStorageError(
-                    f"Unable to inspect file: " f"{file_path}"
+                    f"Unable to inspect file: {file_path}"
                 ) from error
 
             if modified_at >= cutoff_time:
@@ -143,7 +143,7 @@ class JsonFileManager:
 
             except OSError as error:
                 raise FileStorageError(
-                    f"Unable to delete expired file: " f"{file_path}"
+                    f"Unable to delete expired file: {file_path}"
                 ) from error
 
         if not dry_run:

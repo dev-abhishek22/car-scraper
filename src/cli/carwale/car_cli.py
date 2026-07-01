@@ -54,7 +54,7 @@ def add_carwale_cars_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-cars",
-        help=("Fetch detailed CarWale data for " "saved car models"),
+        help=("Fetch detailed CarWale data for saved car models"),
         description=(
             "Read previously saved CarWale model "
             "files and fetch model-page details "
@@ -70,13 +70,13 @@ def add_carwale_cars_command(
         type=str,
         default=None,
         metavar="MAKE_MASKING_NAME",
-        help=("Scrape all saved models for one " "brand, for example 'tata'."),
+        help=("Scrape all saved models for one brand, for example 'tata'."),
     )
 
     selection_group.add_argument(
         "--failed-only",
         action="store_true",
-        help=("Retry only cars currently marked " "as failed in the cars status file."),
+        help=("Retry only cars currently marked as failed in the cars status file."),
     )
 
     parser.add_argument(
@@ -117,11 +117,7 @@ def add_carwale_cars_command(
         "--status-file",
         type=str,
         default=str(DEFAULT_STATUS_FILE),
-        help=(
-            "Path to the cars scraping status "
-            "file. "
-            f"Default: {DEFAULT_STATUS_FILE}"
-        ),
+        help=(f"Path to the cars scraping status file. Default: {DEFAULT_STATUS_FILE}"),
     )
 
     parser.add_argument(
@@ -153,7 +149,7 @@ def add_carwale_cars_command(
         default=3,
         choices=range(1, 9),
         metavar="[1-8]",
-        help=("Number of concurrent car workers. " "Allowed: 1-8. Default: 3"),
+        help=("Number of concurrent car workers. Allowed: 1-8. Default: 3"),
     )
 
     parser.add_argument(
@@ -172,14 +168,14 @@ def add_carwale_cars_command(
         "--city-id",
         type=int,
         default=10,
-        help=("CarWale city ID used for model-page " "data. Default: 10"),
+        help=("CarWale city ID used for model-page data. Default: 10"),
     )
 
     parser.add_argument(
         "--area-id",
         type=int,
         default=3657,
-        help=("CarWale area ID used for model-page " "data. Default: 3657"),
+        help=("CarWale area ID used for model-page data. Default: 3657"),
     )
 
     parser.add_argument(
@@ -192,25 +188,25 @@ def add_carwale_cars_command(
     parser.add_argument(
         "--show-offer-upfront",
         action="store_true",
-        help=("Send showOfferUpfront=true to the " "CarWale model-page API."),
+        help=("Send showOfferUpfront=true to the CarWale model-page API."),
     )
 
     parser.add_argument(
         "--force",
         action="store_true",
-        help=("Scrape again and overwrite existing " "valid car files."),
+        help=("Scrape again and overwrite existing valid car files."),
     )
 
     parser.add_argument(
         "--show-request",
         action="store_true",
-        help=("Print prepared HTTP requests before " "sending them."),
+        help=("Print prepared HTTP requests before sending them."),
     )
 
     parser.add_argument(
         "--save-request",
         action="store_true",
-        help=("Save prepared HTTP request snapshots " "for each car."),
+        help=("Save prepared HTTP request snapshots for each car."),
     )
 
     parser.set_defaults(

@@ -56,7 +56,7 @@ def scrape_carwale_cities(
 
     if not isinstance(response_data, list):
         raise ExternalResponseError(
-            "CarWale cities API returned an invalid " "response. Expected a JSON array."
+            "CarWale cities API returned an invalid response. Expected a JSON array."
         )
 
     cities: list[dict[str, Any]] = []
@@ -72,7 +72,7 @@ def scrape_carwale_cities(
         cities.append(dict(city))
 
     logger_service.info(
-        ("CarWale cities scraped successfully: " f"total_cities={len(cities)}"),
+        (f"CarWale cities scraped successfully: total_cities={len(cities)}"),
         context="CarWaleCitiesExecutor",
     )
 

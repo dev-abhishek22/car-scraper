@@ -41,7 +41,7 @@ def _validate_slug(
 
     if not MASKING_NAME_PATTERN.fullmatch(normalized_value):
         raise ValueError(
-            f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+            f"{field_name} contains invalid characters: {normalized_value!r}"
         )
 
     return normalized_value
@@ -80,7 +80,7 @@ def _validate_non_negative_integer(
     field_name: str,
 ) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"{field_name} must be a non-negative " "integer")
+        raise ValueError(f"{field_name} must be a non-negative integer")
 
     return value
 
@@ -446,7 +446,7 @@ def scrape_carwale_model_page(
     headers: dict[str, str] = {
         **endpoint.default_headers,
         "Referer": (
-            f"{CARWALE_BASE_URL}/" f"{make_masking_name}-cars/" f"{model_masking_name}/"
+            f"{CARWALE_BASE_URL}/{make_masking_name}-cars/{model_masking_name}/"
         ),
     }
 

@@ -47,10 +47,10 @@ def _load_brand_records(
     input_file = Path(brands_file)
 
     if not input_file.exists():
-        raise FileNotFoundError("CarWale brands file was not found: " f"{input_file}")
+        raise FileNotFoundError(f"CarWale brands file was not found: {input_file}")
 
     if not input_file.is_file():
-        raise ValueError("CarWale brands path is not a file: " f"{input_file}")
+        raise ValueError(f"CarWale brands path is not a file: {input_file}")
 
     try:
         payload = json.loads(
@@ -61,7 +61,7 @@ def _load_brand_records(
 
     except json.JSONDecodeError as error:
         raise ValueError(
-            "CarWale brands file contains invalid JSON: " f"{input_file}"
+            f"CarWale brands file contains invalid JSON: {input_file}"
         ) from error
 
     brands_data: Any = payload
@@ -81,11 +81,11 @@ def _load_brand_records(
 
         else:
             raise ValueError(
-                "CarWale brands file does not contain " "a brands or makeList array"
+                "CarWale brands file does not contain a brands or makeList array"
             )
 
     if not isinstance(brands_data, list):
-        raise ValueError("CarWale brands file must contain " "a JSON array")
+        raise ValueError("CarWale brands file must contain a JSON array")
 
     brands: list[dict[str, Any]] = []
 
@@ -94,9 +94,7 @@ def _load_brand_records(
             brands.append(brand)
 
     if not brands:
-        raise ValueError(
-            "CarWale brands file does not contain " "any valid brand records"
-        )
+        raise ValueError("CarWale brands file does not contain any valid brand records")
 
     return brands
 
@@ -161,7 +159,7 @@ def run_carwale_models(
       Scrape all brands.
     """
     if brand is not None and failed_only:
-        raise ValueError("--brand and --failed-only cannot " "be used together")
+        raise ValueError("--brand and --failed-only cannot be used together")
 
     if delay_min < 0:
         raise ValueError("delay_min cannot be negative")

@@ -14,7 +14,7 @@ def add_carwale_brands_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-brands",
-        help=("Fetch CarWale brands and save " "them to brands.json"),
+        help=("Fetch CarWale brands and save them to brands.json"),
         description=(
             "Fetch the makeList from CarWale and save "
             "the latest data to "
@@ -39,16 +39,14 @@ def add_carwale_brands_command(
     parser.add_argument(
         "--show-request",
         action="store_true",
-        help=("Print the prepared HTTP request " "before sending it"),
+        help=("Print the prepared HTTP request before sending it"),
     )
 
     parser.add_argument(
         "--save-request",
         action="store_true",
         help=(
-            "Save request information to "
-            "data/raw/carwale/requests/"
-            "brands_request.json"
+            "Save request information to data/raw/carwale/requests/brands_request.json"
         ),
     )
 
@@ -107,8 +105,7 @@ def validate_carwale_brands_arguments(
         and not args.save_request
     ):
         raise ValueError(
-            "--include-sensitive-request-data requires "
-            "--show-request or --save-request"
+            "--include-sensitive-request-data requires --show-request or --save-request"
         )
 
 

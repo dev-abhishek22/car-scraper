@@ -41,7 +41,7 @@ def add_carwale_cities_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-cities",
-        help=("Fetch all CarWale cities and save " "them to cities.json"),
+        help=("Fetch all CarWale cities and save them to cities.json"),
         description=(
             "Fetch all cities from the CarWale "
             "cities API in a single request and "
@@ -88,19 +88,19 @@ def add_carwale_cities_command(
         type=float,
         default=2.0,
         metavar="SECONDS",
-        help=("Minimum interval between CarWale " "request starts. Default: 2"),
+        help=("Minimum interval between CarWale request starts. Default: 2"),
     )
 
     parser.add_argument(
         "--show-request",
         action="store_true",
-        help=("Print the prepared HTTP request " "before sending it."),
+        help=("Print the prepared HTTP request before sending it."),
     )
 
     parser.add_argument(
         "--save-request",
         action="store_true",
-        help=("Save the prepared HTTP request " "snapshot."),
+        help=("Save the prepared HTTP request snapshot."),
     )
 
     parser.set_defaults(
