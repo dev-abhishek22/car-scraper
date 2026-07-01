@@ -22,6 +22,22 @@ CARWALE_NEW_CARS: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+CARWALE_MAKE_PAGE_DATA: Final[ApiEndpoint] = ApiEndpoint(
+    name="carwale_make_page_data",
+    method="GET",
+    path="/api/makepagedata/",
+    default_params={
+        "cityId": 10,
+        "areaId": 3657,
+        "platformId": 1,
+    },
+    default_headers={
+        "Accept": "*/*",
+        "Referer": "https://www.carwale.com/",
+    },
+)
+
 CARWALE_APIS: Final[dict[str, ApiEndpoint]] = {
     CARWALE_NEW_CARS.name: CARWALE_NEW_CARS,
+    CARWALE_MAKE_PAGE_DATA.name: CARWALE_MAKE_PAGE_DATA,
 }

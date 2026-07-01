@@ -40,6 +40,8 @@ def run_carwale_brands(
         directory="data/raw/carwale",
         file_name="brands",
         data=make_list,
+        create_archive=True,
+        archive_directory="data/raw/carwale/archive/brands",
     )
 
     return {

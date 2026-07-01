@@ -7,6 +7,9 @@ from collections.abc import Callable, Sequence
 from src.cli.carwale.brand_cli import (
     add_carwale_brands_command,
 )
+from src.cli.carwale.model_cli import (
+    add_carwale_models_command,
+)
 from src.cli.cleanup_cli import (
     add_cleanup_command,
 )
@@ -30,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_carwale_brands_command(
+        subparsers=subparsers,
+    )
+
+    add_carwale_models_command(
         subparsers=subparsers,
     )
 
