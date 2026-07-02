@@ -151,7 +151,6 @@ class CarWaleCityPriceFailureRepository:
                         },
                         "$setOnInsert": {
                             "firstFailedAt": (failure.first_failed_at),
-                            "attempts": 0,
                         },
                         "$inc": {
                             "attempts": 1,

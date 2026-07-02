@@ -36,8 +36,11 @@ class AsyncClientMetrics:
     access_denied_responses: int = 0
     access_denied_circuit_trips: int = 0
     access_denied_circuit_rejections: int = 0
+    access_denied_cooldowns: int = 0
+    access_denied_cooldown_seconds: float = 0.0
     scheduled_pauses: int = 0
     scheduled_pause_seconds: float = 0.0
+    scheduled_connection_resets: int = 0
     network_errors: int = 0
     json_decode_errors: int = 0
     total_attempt_duration_seconds: float = 0.0
@@ -65,11 +68,17 @@ class AsyncClientMetrics:
             "access_denied_responses": self.access_denied_responses,
             "access_denied_circuit_trips": (self.access_denied_circuit_trips),
             "access_denied_circuit_rejections": (self.access_denied_circuit_rejections),
+            "access_denied_cooldowns": self.access_denied_cooldowns,
+            "access_denied_cooldown_seconds": round(
+                self.access_denied_cooldown_seconds,
+                2,
+            ),
             "scheduled_pauses": self.scheduled_pauses,
             "scheduled_pause_seconds": round(
                 self.scheduled_pause_seconds,
                 2,
             ),
+            "scheduled_connection_resets": (self.scheduled_connection_resets),
             "network_errors": self.network_errors,
             "json_decode_errors": self.json_decode_errors,
             "average_attempt_duration_seconds": round(
@@ -124,6 +133,7 @@ class AsyncExternalHttpClient:
         requests_per_second: float = 10.0,
         pause_every_requests: int = 0,
         pause_seconds: float = 0.0,
+        access_denied_cooldown_seconds: float = 300.0,
         max_retries: int = 3,
         connect_timeout: float = 10.0,
         read_timeout: float = 30.0,
@@ -148,6 +158,7 @@ class AsyncExternalHttpClient:
             requests_per_second=requests_per_second,
             pause_every_requests=pause_every_requests,
             pause_seconds=pause_seconds,
+            access_denied_cooldown_seconds=access_denied_cooldown_seconds,
             max_retries=max_retries,
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
@@ -163,6 +174,7 @@ class AsyncExternalHttpClient:
         self.requests_per_second = float(requests_per_second)
         self.pause_every_requests = pause_every_requests
         self.pause_seconds = float(pause_seconds)
+        self.access_denied_cooldown_seconds = float(access_denied_cooldown_seconds)
         self.max_retries = max_retries
         self.log_successful_requests = log_successful_requests
 
@@ -173,14 +185,16 @@ class AsyncExternalHttpClient:
         self._last_request_started_at: float | None = None
         self._blocked_until = 0.0
         self._request_starts_since_pause = 0
+        self._scheduled_pause_in_progress = False
+        self._in_flight_attempts = 0
 
-        # A 401/403 from a protected upstream normally applies to the whole
-        # client/IP, not only one request. Once opened, this circuit prevents
-        # workers that are still waiting for a rate slot from sending more
-        # traffic during the same scraper run.
+        # A 401/403 starts one shared cooldown for every worker. The Python
+        # process, pipeline, MongoDB connection, and HTTP pool remain alive.
+        # After the cooldown, all affected logical requests retry automatically.
         self._access_denied_event = asyncio.Event()
         self._access_denied_status: int | None = None
         self._access_denied_url: str | None = None
+        self._access_denied_cooldown_task: asyncio.Task[None] | None = None
 
         # Protects header/cookie mutations and request preparation.
         self._client_configuration_lock = asyncio.Lock()
@@ -209,42 +223,27 @@ class AsyncExternalHttpClient:
         if default_headers:
             headers.update(dict(default_headers))
 
-        timeout = httpx.Timeout(
-            connect=connect_timeout,
-            read=read_timeout,
-            write=write_timeout,
-            pool=pool_timeout,
-        )
+        # Store the HTTP-client configuration so the connection pool can be
+        # completely closed during a scheduled pause and rebuilt afterward.
+        # Only explicitly configured cookies are restored; cookies learned
+        # from responses in the previous HTTP session are intentionally reset.
+        self._configured_headers = headers
+        self._configured_cookies = dict(cookies or {})
+        self._connect_timeout = connect_timeout
+        self._read_timeout = read_timeout
+        self._write_timeout = write_timeout
+        self._pool_timeout = pool_timeout
+        self._max_connections = max_connections
+        self._max_keepalive_connections = max_keepalive_connections
+        self._keepalive_expiry = keepalive_expiry
+        self._follow_redirects = follow_redirects
+        self._verify_ssl = verify_ssl
+        self._trust_environment = trust_environment
+        self._http2 = http2
+        self._provided_transport = transport
+        self._http_client_generation = 0
 
-        limits = httpx.Limits(
-            max_connections=max_connections,
-            max_keepalive_connections=max_keepalive_connections,
-            keepalive_expiry=keepalive_expiry,
-        )
-
-        resolved_transport = transport
-
-        if resolved_transport is None:
-            # Retry ownership stays in this class. Transport retries remain
-            # disabled so attempts and metrics are never hidden from us.
-            resolved_transport = httpx.AsyncHTTPTransport(
-                retries=0,
-                verify=verify_ssl,
-                trust_env=trust_environment,
-                http1=True,
-                http2=http2,
-                limits=limits,
-            )
-
-        self.client = httpx.AsyncClient(
-            base_url=self.base_url,
-            headers=headers,
-            cookies=dict(cookies or {}),
-            timeout=timeout,
-            transport=resolved_transport,
-            follow_redirects=follow_redirects,
-            trust_env=trust_environment,
-        )
+        self.client = self._create_http_client()
 
         logger_service.info(
             (
@@ -258,6 +257,8 @@ class AsyncExternalHttpClient:
                 f"{self.pause_every_requests}, "
                 "pause_seconds="
                 f"{self.pause_seconds:.2f}, "
+                "access_denied_cooldown_seconds="
+                f"{self.access_denied_cooldown_seconds:.2f}, "
                 f"max_connections={max_connections}, "
                 "max_keepalive_connections="
                 f"{max_keepalive_connections}, "
@@ -265,6 +266,51 @@ class AsyncExternalHttpClient:
             ),
             context=self.__class__.__name__,
         )
+
+    def _create_http_transport(self) -> httpx.AsyncBaseTransport:
+        # A caller-supplied transport is used only for the initial client.
+        # Reconnected production sessions need a new transport because closing
+        # an AsyncClient also closes its transport and connection pool.
+        if self._provided_transport is not None and self._http_client_generation == 0:
+            return self._provided_transport
+
+        limits = httpx.Limits(
+            max_connections=self._max_connections,
+            max_keepalive_connections=(self._max_keepalive_connections),
+            keepalive_expiry=self._keepalive_expiry,
+        )
+
+        # Retry ownership stays in this class. Transport retries remain
+        # disabled so attempts and metrics are never hidden from us.
+        return httpx.AsyncHTTPTransport(
+            retries=0,
+            verify=self._verify_ssl,
+            trust_env=self._trust_environment,
+            http1=True,
+            http2=self._http2,
+            limits=limits,
+        )
+
+    def _create_http_client(self) -> httpx.AsyncClient:
+        timeout = httpx.Timeout(
+            connect=self._connect_timeout,
+            read=self._read_timeout,
+            write=self._write_timeout,
+            pool=self._pool_timeout,
+        )
+
+        client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers=dict(self._configured_headers),
+            cookies=dict(self._configured_cookies),
+            timeout=timeout,
+            transport=self._create_http_transport(),
+            follow_redirects=self._follow_redirects,
+            trust_env=self._trust_environment,
+        )
+
+        self._http_client_generation += 1
+        return client
 
     @staticmethod
     def _normalize_base_url(base_url: str) -> str:
@@ -320,6 +366,7 @@ class AsyncExternalHttpClient:
         requests_per_second: float,
         pause_every_requests: int,
         pause_seconds: float,
+        access_denied_cooldown_seconds: float,
         max_retries: int,
         connect_timeout: float,
         read_timeout: float,
@@ -368,6 +415,11 @@ class AsyncExternalHttpClient:
                 "pause_every_requests and pause_seconds must "
                 "both be greater than zero or both be zero"
             )
+
+        cls._validate_positive_number(
+            name="access_denied_cooldown_seconds",
+            value=access_denied_cooldown_seconds,
+        )
 
         if isinstance(max_retries, bool) or not isinstance(max_retries, int):
             raise ValueError("max_retries must be an integer")
@@ -465,121 +517,313 @@ class AsyncExternalHttpClient:
             self._active_requests -= 1
             self._lifecycle_condition.notify_all()
 
-    def _raise_if_access_denied_circuit_open(self) -> None:
-        if not self._access_denied_event.is_set():
-            return
+    async def _wait_for_access_denied_cooldown(self) -> None:
+        """Wait for the currently active shared 401/403 cooldown."""
 
-        self._metrics.access_denied_circuit_rejections += 1
+        while True:
+            async with self._rate_condition:
+                if self._closed:
+                    raise ExternalClientError(
+                        "Async HTTP client was closed during access-denied cooldown"
+                    )
 
-        status_code = self._access_denied_status or 403
-        safe_url = self._access_denied_url or self.base_url
+                if not self._access_denied_event.is_set():
+                    return
 
-        raise ExternalAccessDeniedError(
-            "External website access-denied circuit is open: "
-            f"status={status_code}, url={safe_url}"
+                cooldown_task = self._access_denied_cooldown_task
+
+                if cooldown_task is None:
+                    await self._rate_condition.wait()
+                    continue
+
+            # Shielding prevents one cancelled worker from cancelling the
+            # single global cooldown task used by every other worker.
+            await asyncio.shield(cooldown_task)
+
+    async def _run_access_denied_cooldown(
+        self,
+        *,
+        cooldown_number: int,
+        status_code: int,
+        safe_url: str,
+    ) -> None:
+        logger_service.warning(
+            (
+                "External access denied; global HTTP cooldown started: "
+                f"cooldown_number={cooldown_number}, "
+                f"status={status_code}, url={safe_url}, "
+                "duration_seconds="
+                f"{self.access_denied_cooldown_seconds:.2f}, "
+                "http_connections_closed=False, "
+                "pipeline_and_mongodb_remain_active=True"
+            ),
+            context=self.__class__.__name__,
         )
 
-    async def _trip_access_denied_circuit(
+        try:
+            try:
+                await asyncio.wait_for(
+                    self._close_event.wait(),
+                    timeout=self.access_denied_cooldown_seconds,
+                )
+            except TimeoutError:
+                pass
+
+            if not self._closed:
+                logger_service.info(
+                    (
+                        "External access-denied cooldown completed: "
+                        f"cooldown_number={cooldown_number}, "
+                        "scraping_resumed_automatically=True"
+                    ),
+                    context=self.__class__.__name__,
+                )
+
+        finally:
+            async with self._rate_condition:
+                current_task = asyncio.current_task()
+
+                if self._access_denied_cooldown_task is current_task:
+                    self._access_denied_cooldown_task = None
+
+                self._access_denied_event.clear()
+                self._access_denied_status = None
+                self._access_denied_url = None
+                self._last_request_started_at = None
+                self._rate_condition.notify_all()
+
+    async def _start_access_denied_cooldown(
         self,
         response: httpx.Response,
-    ) -> None:
+    ) -> asyncio.Task[None]:
         status_code = response.status_code
         safe_url = self._safe_url(response.request.url)
-        opened_now = False
 
         async with self._rate_condition:
-            if not self._access_denied_event.is_set():
-                self._access_denied_status = status_code
-                self._access_denied_url = safe_url
-                self._access_denied_event.set()
-                self._metrics.access_denied_circuit_trips += 1
-                opened_now = True
+            existing_task = self._access_denied_cooldown_task
 
+            if existing_task is not None and not existing_task.done():
+                return existing_task
+
+            self._access_denied_status = status_code
+            self._access_denied_url = safe_url
+            self._access_denied_event.set()
+            self._request_starts_since_pause = 0
+            self._metrics.access_denied_circuit_trips += 1
+            self._metrics.access_denied_cooldowns += 1
+            self._metrics.access_denied_cooldown_seconds += (
+                self.access_denied_cooldown_seconds
+            )
+            cooldown_number = self._metrics.access_denied_cooldowns
+
+            cooldown_task = asyncio.create_task(
+                self._run_access_denied_cooldown(
+                    cooldown_number=cooldown_number,
+                    status_code=status_code,
+                    safe_url=safe_url,
+                ),
+                name=("external-access-denied-cooldown-" f"{cooldown_number}"),
+            )
+            self._access_denied_cooldown_task = cooldown_task
             self._rate_condition.notify_all()
+            return cooldown_task
 
-        if opened_now:
-            logger_service.error(
+    async def _perform_scheduled_connection_pause(
+        self,
+        *,
+        pause_number: int,
+    ) -> None:
+        """Close the HTTP pool, wait, rebuild it, and continue automatically."""
+
+        old_client_closed = False
+
+        try:
+            # No new attempts can start while the pause flag is set. Wait for
+            # attempts that already own a request slot to finish before closing
+            # the underlying connection pool.
+            async with self._rate_condition:
+                while self._in_flight_attempts > 0 and not self._closed:
+                    await self._rate_condition.wait()
+
+            if self._closed:
+                raise ExternalClientError(
+                    "Async HTTP client was closed before scheduled pause"
+                )
+
+            if self._access_denied_event.is_set():
+                logger_service.info(
+                    (
+                        "Scheduled HTTP connection reset skipped because "
+                        "an access-denied cooldown is already active: "
+                        f"pause_number={pause_number}"
+                    ),
+                    context=self.__class__.__name__,
+                )
+                return
+
+            async with self._client_configuration_lock:
+                if not self.client.is_closed:
+                    await self.client.aclose()
+                old_client_closed = True
+
+            logger_service.info(
                 (
-                    "External access-denied circuit opened: "
-                    f"status={status_code}, url={safe_url}. "
-                    "No additional HTTP attempts will start in this "
-                    "client session."
+                    "Scheduled external HTTP connections closed: "
+                    f"pause_number={pause_number}, "
+                    f"duration_seconds={self.pause_seconds:.2f}, "
+                    "pipeline_and_mongodb_remain_active=True"
                 ),
                 context=self.__class__.__name__,
             )
 
+            try:
+                await asyncio.wait_for(
+                    self._close_event.wait(),
+                    timeout=self.pause_seconds,
+                )
+            except TimeoutError:
+                pass
+            else:
+                raise ExternalClientError(
+                    "Async HTTP client was closed during scheduled pause"
+                )
+
+            async with self._client_configuration_lock:
+                if self._closed:
+                    raise ExternalClientError(
+                        "Async HTTP client was closed during scheduled pause"
+                    )
+
+                self.client = self._create_http_client()
+                self._metrics.scheduled_connection_resets += 1
+                old_client_closed = False
+
+            logger_service.info(
+                (
+                    "Scheduled external HTTP pause completed: "
+                    f"pause_number={pause_number}, "
+                    "new_connection_pool=True, "
+                    "scraping_resumed_automatically=True"
+                ),
+                context=self.__class__.__name__,
+            )
+
+        except asyncio.CancelledError:
+            # Avoid leaving other workers blocked forever if the worker that
+            # initiated the pause is cancelled while the process is still live.
+            if old_client_closed and not self._closed:
+                async with self._client_configuration_lock:
+                    if self.client.is_closed:
+                        self.client = self._create_http_client()
+                        self._metrics.scheduled_connection_resets += 1
+            raise
+
+        finally:
+            async with self._rate_condition:
+                self._scheduled_pause_in_progress = False
+                self._blocked_until = 0.0
+                self._last_request_started_at = None
+                self._rate_condition.notify_all()
+
     async def _wait_for_request_slot(self) -> None:
-        """Enforce global request pacing and any active cooldown."""
+        """Reserve one paced request slot, respecting every global pause."""
 
-        async with self._rate_condition:
-            while True:
-                self._raise_if_access_denied_circuit_open()
+        while True:
+            pause_number: int | None = None
+            cooldown_task: asyncio.Task[None] | None = None
 
+            async with self._rate_condition:
                 if self._closed:
                     raise ExternalClientError(
                         "Async HTTP client was closed while waiting for a request slot"
                     )
 
-                current_time = time.monotonic()
+                if self._access_denied_event.is_set():
+                    cooldown_task = self._access_denied_cooldown_task
 
-                should_start_scheduled_pause = (
-                    self.pause_every_requests > 0
-                    and self._request_starts_since_pause >= self.pause_every_requests
+                    if cooldown_task is None:
+                        await self._rate_condition.wait()
+                        continue
+
+                elif self._scheduled_pause_in_progress:
+                    await self._rate_condition.wait()
+                    continue
+
+                else:
+                    should_start_scheduled_pause = (
+                        self.pause_every_requests > 0
+                        and self._request_starts_since_pause
+                        >= self.pause_every_requests
+                    )
+
+                    if should_start_scheduled_pause:
+                        self._scheduled_pause_in_progress = True
+                        self._request_starts_since_pause = 0
+                        self._metrics.scheduled_pauses += 1
+                        self._metrics.scheduled_pause_seconds += self.pause_seconds
+                        pause_number = self._metrics.scheduled_pauses
+                        self._rate_condition.notify_all()
+
+                        logger_service.info(
+                            (
+                                "Scheduled external HTTP pause started: "
+                                f"pause_number={pause_number}, "
+                                "after_requests="
+                                f"{self.pause_every_requests}, "
+                                "duration_seconds="
+                                f"{self.pause_seconds:.2f}, "
+                                "close_connections=True"
+                            ),
+                            context=self.__class__.__name__,
+                        )
+
+                    else:
+                        current_time = time.monotonic()
+                        interval_ready_at = current_time
+
+                        if (
+                            self.requests_per_second > 0
+                            and self._last_request_started_at is not None
+                        ):
+                            interval_ready_at = self._last_request_started_at + (
+                                1.0 / self.requests_per_second
+                            )
+
+                        next_request_at = max(
+                            current_time,
+                            interval_ready_at,
+                            self._blocked_until,
+                        )
+                        remaining = next_request_at - current_time
+
+                        if remaining <= 0:
+                            self._last_request_started_at = current_time
+                            self._request_starts_since_pause += 1
+                            self._in_flight_attempts += 1
+                            return
+
+                        try:
+                            await asyncio.wait_for(
+                                self._rate_condition.wait(),
+                                timeout=remaining,
+                            )
+                        except TimeoutError:
+                            pass
+
+            if cooldown_task is not None:
+                await asyncio.shield(cooldown_task)
+                continue
+
+            if pause_number is not None:
+                await self._perform_scheduled_connection_pause(
+                    pause_number=pause_number,
                 )
 
-                if should_start_scheduled_pause:
-                    self._request_starts_since_pause = 0
-                    self._blocked_until = max(
-                        self._blocked_until,
-                        current_time + self.pause_seconds,
-                    )
-                    self._metrics.scheduled_pauses += 1
-                    self._metrics.scheduled_pause_seconds += self.pause_seconds
-
-                    logger_service.info(
-                        (
-                            "Scheduled external HTTP pause started: "
-                            "pause_number="
-                            f"{self._metrics.scheduled_pauses}, "
-                            "after_requests="
-                            f"{self.pause_every_requests}, "
-                            "duration_seconds="
-                            f"{self.pause_seconds:.2f}"
-                        ),
-                        context=self.__class__.__name__,
-                    )
-
-                interval_ready_at = current_time
-
-                if (
-                    self.requests_per_second > 0
-                    and self._last_request_started_at is not None
-                ):
-                    interval_ready_at = self._last_request_started_at + (
-                        1.0 / self.requests_per_second
-                    )
-
-                next_request_at = max(
-                    current_time,
-                    interval_ready_at,
-                    self._blocked_until,
-                )
-
-                remaining = next_request_at - current_time
-
-                if remaining <= 0:
-                    self._last_request_started_at = current_time
-                    self._request_starts_since_pause += 1
-                    return
-
-                try:
-                    await asyncio.wait_for(
-                        self._rate_condition.wait(),
-                        timeout=remaining,
-                    )
-                except TimeoutError:
-                    # The scheduled request-start time has arrived.
-                    pass
+    async def _finish_request_attempt(self) -> None:
+        async with self._rate_condition:
+            if self._in_flight_attempts > 0:
+                self._in_flight_attempts -= 1
+            self._rate_condition.notify_all()
 
     async def _set_global_cooldown(self, delay: float) -> None:
         if delay <= 0:
@@ -752,26 +996,14 @@ class AsyncExternalHttpClient:
             raise ValueError("method cannot be empty")
 
         total_attempts = self.max_retries + 1
+        attempt = 1
         last_exception: Exception | None = None
 
         await self._begin_request()
         self._metrics.started_requests += 1
 
         try:
-            for attempt in range(1, total_attempts + 1):
-                self._raise_if_access_denied_circuit_open()
-
-                request = await self._build_request(
-                    method=normalized_method,
-                    endpoint=endpoint,
-                    params=params,
-                    headers=headers,
-                    json=json,
-                    data=data,
-                    content=content,
-                    files=files,
-                )
-
+            while attempt <= total_attempts:
                 try:
                     async with self._concurrency_semaphore:
                         await self._wait_for_request_slot()
@@ -780,10 +1012,21 @@ class AsyncExternalHttpClient:
                         self._metrics.total_attempts += 1
 
                         try:
+                            request = await self._build_request(
+                                method=normalized_method,
+                                endpoint=endpoint,
+                                params=params,
+                                headers=headers,
+                                json=json,
+                                data=data,
+                                content=content,
+                                files=files,
+                            )
                             response = await self.client.send(request)
                         finally:
                             duration = time.monotonic() - started_at
                             self._metrics.total_attempt_duration_seconds += duration
+                            await self._finish_request_attempt()
 
                 except self.RETRYABLE_REQUEST_EXCEPTIONS as error:
                     last_exception = error
@@ -813,6 +1056,7 @@ class AsyncExternalHttpClient:
                     )
 
                     await self._sleep_before_retry(retry_delay)
+                    attempt += 1
                     continue
 
                 except httpx.RequestError as error:
@@ -828,7 +1072,14 @@ class AsyncExternalHttpClient:
 
                 if response.status_code in self.ACCESS_DENIED_STATUS_CODES:
                     self._metrics.access_denied_responses += 1
-                    await self._trip_access_denied_circuit(response)
+                    self._metrics.retries += 1
+                    cooldown_task = await self._start_access_denied_cooldown(response)
+                    await asyncio.shield(cooldown_task)
+
+                    # A 401/403 retry does not consume max_retries. If the
+                    # upstream still denies access, one new shared cooldown
+                    # begins and the same logical request remains pending.
+                    continue
 
                 if response.status_code == 429:
                     self._metrics.rate_limited_responses += 1
@@ -879,6 +1130,8 @@ class AsyncExternalHttpClient:
                     await self._set_global_cooldown(retry_delay)
                 else:
                     await self._sleep_before_retry(retry_delay)
+
+                attempt += 1
 
             raise ExternalClientError(
                 "Async external request failed after all retry attempts: "
@@ -1020,7 +1273,9 @@ class AsyncExternalHttpClient:
                     "Cannot update headers because the async client is closed"
                 )
 
-            self.client.headers.update(dict(headers))
+            normalized_headers = dict(headers)
+            self._configured_headers.update(normalized_headers)
+            self.client.headers.update(normalized_headers)
 
     async def update_cookies(self, cookies: Mapping[str, str]) -> None:
         async with self._client_configuration_lock:
@@ -1029,7 +1284,9 @@ class AsyncExternalHttpClient:
                     "Cannot update cookies because the async client is closed"
                 )
 
-            self.client.cookies.update(dict(cookies))
+            normalized_cookies = dict(cookies)
+            self._configured_cookies.update(normalized_cookies)
+            self.client.cookies.update(normalized_cookies)
 
     async def clear_cookies(self) -> None:
         async with self._client_configuration_lock:
@@ -1038,6 +1295,7 @@ class AsyncExternalHttpClient:
                     "Cannot clear cookies because the async client is closed"
                 )
 
+            self._configured_cookies.clear()
             self.client.cookies.clear()
 
     @property
@@ -1053,6 +1311,12 @@ class AsyncExternalHttpClient:
         snapshot["access_denied_circuit_open"] = self._access_denied_event.is_set()
         snapshot["access_denied_status"] = self._access_denied_status
         snapshot["access_denied_url"] = self._access_denied_url
+        snapshot["access_denied_cooldown_seconds_configured"] = (
+            self.access_denied_cooldown_seconds
+        )
+        snapshot["http_client_generation"] = self._http_client_generation
+        snapshot["scheduled_pause_in_progress"] = self._scheduled_pause_in_progress
+        snapshot["in_flight_attempts"] = self._in_flight_attempts
         return snapshot
 
     @property
@@ -1076,7 +1340,8 @@ class AsyncExternalHttpClient:
                     await self._lifecycle_condition.wait()
 
             async with self._client_configuration_lock:
-                await self.client.aclose()
+                if not self.client.is_closed:
+                    await self.client.aclose()
                 self._client_closed = True
 
             logger_service.info(

@@ -40,7 +40,6 @@ RETRYABLE_HTTP_STATUS_CODES = {
 }
 
 STOP_REASON_ACCESS_DENIED = "external_access_denied"
-STOP_REASON_INITIAL_FAILURES = "initial_requests_failed"
 
 
 @dataclass(slots=True)
@@ -135,10 +134,10 @@ class CarWaleCityPricePipeline:
         if failure_sample_limit < 0:
             raise ValueError("failure_sample_limit cannot be negative")
 
+        # Persist every failed job immediately. Failures are normally rare,
+        # and saving one-by-one prevents records from remaining only in memory.
         resolved_failure_batch_size = (
-            min(mongo_batch_size, 50)
-            if failure_batch_size is None
-            else failure_batch_size
+            1 if failure_batch_size is None else failure_batch_size
         )
 
         if resolved_failure_batch_size < 1:
@@ -369,22 +368,20 @@ class CarWaleCityPricePipeline:
         if access_denied:
             return
 
-        if self._stats.failed <= self._failure_sample_limit:
-            logger_service.error(
-                (
-                    "CarWale city-price request failed: "
-                    f"key={job.item_key}, "
-                    f"retryable={retryable}, "
-                    f"http_status={http_status}"
-                ),
-                exception=error,
-                context="CarWaleCityPricePipeline",
-            )
-        elif self._stats.failed % 1_000 == 0:
-            logger_service.warning(
-                f"CarWale city-price failures: count={self._stats.failed}",
-                context="CarWaleCityPricePipeline",
-            )
+        logger_service.error(
+            (
+                "CarWale city-price request failed: "
+                f"key={job.item_key}, "
+                f"version_id={job.version_id}, "
+                f"city_id={job.city_id}, "
+                f"city={job.city_masking_name}, "
+                f"retryable={retryable}, "
+                f"http_status={http_status}, "
+                f"error_type={type(error).__name__}, "
+                f"error={str(error).strip() or 'Unknown failure'}"
+            ),
+            context="CarWaleCityPricePipeline",
+        )
 
     async def _worker(
         self,
@@ -483,23 +480,6 @@ class CarWaleCityPricePipeline:
                         http_status=http_status,
                         access_denied=False,
                     )
-
-                    if self._stats.failed >= 10 and self._stats.successful == 0:
-                        opened = self._open_circuit_breaker(
-                            stop_event=stop_event,
-                            reason=STOP_REASON_INITIAL_FAILURES,
-                            http_status=http_status,
-                        )
-
-                        if opened:
-                            logger_service.error(
-                                (
-                                    "The first 10 CarWale city-price "
-                                    "requests failed. Stopping gracefully."
-                                ),
-                                exception=error,
-                                context="CarWaleCityPricePipeline",
-                            )
 
                 if self._stats.completed > 0 and self._stats.completed % 10_000 == 0:
                     logger_service.debug(

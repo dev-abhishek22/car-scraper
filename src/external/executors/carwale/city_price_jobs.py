@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator, Mapping
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from src.logger.logger import logger_service
 from src.models.carwale_city_price_job import (
     CarWaleCityPriceJob,
 )
+
+INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
+CARWALE_DATE_FORMAT = "%m/%d/%Y %H:%M:%S"
 
 
 class CarWaleCityPriceJobSourceError(ValueError):
@@ -50,6 +55,42 @@ def _normalize_optional_slug(
     return normalized_value
 
 
+def _is_launched_by_date(
+    value: Any,
+) -> bool:
+    """
+    Return True only when the CarWale launch date is today or in the past.
+
+    CarWale date example:
+        07/09/2026 00:00:00
+
+    Format:
+        MM/DD/YYYY HH:MM:SS
+    """
+
+    if not isinstance(value, str):
+        return False
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        return False
+
+    try:
+        launched_at = datetime.strptime(
+            normalized_value,
+            CARWALE_DATE_FORMAT,
+        )
+    except ValueError:
+        return False
+
+    current_date = datetime.now(
+        INDIA_TIMEZONE,
+    ).date()
+
+    return launched_at.date() <= current_date
+
+
 def load_carwale_cities(
     cities_file: str | Path,
     *,
@@ -64,7 +105,9 @@ def load_carwale_cities(
             "CarWale cities file must contain a JSON array"
         )
 
-    normalized_selected_city = _normalize_optional_slug(selected_city)
+    normalized_selected_city = _normalize_optional_slug(
+        selected_city,
+    )
 
     cities: list[tuple[int, str]] = []
     seen_city_ids: set[int] = set()
@@ -72,13 +115,15 @@ def load_carwale_cities(
     for index, city in enumerate(payload):
         if not isinstance(city, Mapping):
             logger_service.warning(
-                (f"Skipping invalid CarWale city: index={index}"),
+                f"Skipping invalid CarWale city: index={index}",
                 context="CarWaleCityPriceJobs",
             )
             continue
 
         city_id = city.get("CityId")
-        city_masking_name = city.get("CityMaskingName")
+        city_masking_name = city.get(
+            "CityMaskingName",
+        )
         is_deleted = city.get(
             "IsDeleted",
             False,
@@ -89,7 +134,7 @@ def load_carwale_cities(
 
         if isinstance(city_id, bool) or not isinstance(city_id, int) or city_id <= 0:
             logger_service.warning(
-                (f"Skipping CarWale city with invalid CityId: index={index}"),
+                ("Skipping CarWale city with invalid CityId: " f"index={index}"),
                 context="CarWaleCityPriceJobs",
             )
             continue
@@ -142,14 +187,23 @@ def iter_carwale_city_price_jobs(
 
     if not cars_path.exists():
         raise CarWaleCityPriceJobSourceError(
-            (f"CarWale cars directory does not exist: {cars_path}")
+            ("CarWale cars directory does not exist: " f"{cars_path}")
+        )
+
+    if not cars_path.is_dir():
+        raise CarWaleCityPriceJobSourceError(
+            ("CarWale cars path is not a directory: " f"{cars_path}")
         )
 
     if max_jobs is not None and max_jobs < 1:
         raise ValueError("max_jobs must be greater than zero")
 
-    normalized_brand = _normalize_optional_slug(selected_brand)
-    normalized_model = _normalize_optional_slug(selected_model)
+    normalized_brand = _normalize_optional_slug(
+        selected_brand,
+    )
+    normalized_model = _normalize_optional_slug(
+        selected_model,
+    )
 
     if normalized_model is not None and normalized_brand is None:
         raise ValueError("selected_model requires selected_brand")
@@ -162,20 +216,28 @@ def iter_carwale_city_price_jobs(
     seen_version_ids: set[int] = set()
     generated_jobs = 0
 
-    car_files = sorted(cars_path.rglob("*.json"))
+    car_files = sorted(
+        cars_path.rglob("*.json"),
+    )
 
     for car_file in car_files:
-        payload = _read_json_file(car_file)
+        payload = _read_json_file(
+            car_file,
+        )
 
         if not isinstance(payload, Mapping):
             logger_service.warning(
-                (f"Skipping invalid CarWale car file: file={car_file}"),
+                ("Skipping invalid CarWale car file: " f"file={car_file}"),
                 context="CarWaleCityPriceJobs",
             )
             continue
 
-        make_masking_name = payload.get("makeMaskingName")
-        model_masking_name = payload.get("modelMaskingName")
+        make_masking_name = payload.get(
+            "makeMaskingName",
+        )
+        model_masking_name = payload.get(
+            "modelMaskingName",
+        )
 
         if not isinstance(
             make_masking_name,
@@ -191,6 +253,12 @@ def iter_carwale_city_price_jobs(
 
         make_masking_name = make_masking_name.strip().lower()
         model_masking_name = model_masking_name.strip().lower()
+
+        if not make_masking_name:
+            continue
+
+        if not model_masking_name:
+            continue
 
         if normalized_brand is not None and make_masking_name != normalized_brand:
             continue
@@ -215,7 +283,20 @@ def iter_carwale_city_price_jobs(
             ):
                 continue
 
-            version_id = version.get("versionId")
+            launched_on = version.get(
+                "launchedOn",
+            )
+
+            # Skip upcoming versions, missing launch dates,
+            # and invalid launch-date values.
+            if not _is_launched_by_date(
+                launched_on,
+            ):
+                continue
+
+            version_id = version.get(
+                "versionId",
+            )
 
             if (
                 isinstance(version_id, bool)
@@ -227,7 +308,9 @@ def iter_carwale_city_price_jobs(
             if version_id in seen_version_ids:
                 continue
 
-            seen_version_ids.add(version_id)
+            seen_version_ids.add(
+                version_id,
+            )
 
             for (
                 city_id,
