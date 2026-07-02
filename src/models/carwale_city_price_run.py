@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Self
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 CarWaleCityPriceRunStatus = Literal[
     "running",
@@ -63,6 +63,33 @@ class CarWaleCityPriceRunSettings(BaseModel):
         alias="mongoBatchSize",
         ge=1,
     )
+
+    pause_every_requests: int = Field(
+        default=0,
+        alias="pauseEveryRequests",
+        ge=0,
+    )
+
+    pause_seconds: float = Field(
+        default=0.0,
+        alias="pauseSeconds",
+        ge=0,
+    )
+
+    @model_validator(mode="after")
+    def validate_pause_configuration(
+        self,
+    ) -> Self:
+        request_pause_enabled = self.pause_every_requests > 0
+        duration_pause_enabled = self.pause_seconds > 0
+
+        if request_pause_enabled != duration_pause_enabled:
+            raise ValueError(
+                "pauseEveryRequests and pauseSeconds must "
+                "both be greater than zero or both be zero"
+            )
+
+        return self
 
 
 class CarWaleCityPriceRun(BaseModel):
@@ -206,6 +233,8 @@ class CarWaleCityPriceRun(BaseModel):
         workers: int,
         requests_per_second: float,
         mongo_batch_size: int,
+        pause_every_requests: int = 0,
+        pause_seconds: float = 0.0,
     ) -> Self:
         current_time = datetime.now(timezone.utc)
 
@@ -224,6 +253,8 @@ class CarWaleCityPriceRun(BaseModel):
                 workers=workers,
                 requestsPerSecond=requests_per_second,
                 mongoBatchSize=mongo_batch_size,
+                pauseEveryRequests=pause_every_requests,
+                pauseSeconds=pause_seconds,
             ),
             produced=0,
             skipped=0,

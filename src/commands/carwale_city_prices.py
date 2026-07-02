@@ -62,6 +62,8 @@ async def run_carwale_city_prices(
     workers: int = 5,
     requests_per_second: float = 2.0,
     mongo_batch_size: int = 100,
+    pause_every_requests: int | None = None,
+    pause_seconds: float | None = None,
     max_jobs: int | None = None,
     resume_run_id: str | None = None,
     failed_only: bool = False,
@@ -81,6 +83,39 @@ async def run_carwale_city_prices(
 
     if mongo_batch_size < 1:
         raise ValueError("mongo_batch_size must be at least 1")
+
+    pause_override_requested = (
+        pause_every_requests is not None or pause_seconds is not None
+    )
+
+    if pause_override_requested and (
+        pause_every_requests is None or pause_seconds is None
+    ):
+        raise ValueError(
+            "--pause-every-requests and --pause-seconds " "must be provided together"
+        )
+
+    if pause_every_requests is not None and (
+        isinstance(pause_every_requests, bool) or pause_every_requests < 0
+    ):
+        raise ValueError("pause_every_requests must be a non-negative integer")
+
+    if pause_seconds is not None and (
+        isinstance(pause_seconds, bool) or pause_seconds < 0
+    ):
+        raise ValueError("pause_seconds must be a non-negative number")
+
+    if pause_override_requested:
+        pause_count_enabled = (
+            pause_every_requests is not None and pause_every_requests > 0
+        )
+        pause_duration_enabled = pause_seconds is not None and pause_seconds > 0
+
+        if pause_count_enabled != pause_duration_enabled:
+            raise ValueError(
+                "pause_every_requests and pause_seconds must "
+                "both be greater than zero or both be zero"
+            )
 
     if max_jobs is not None and max_jobs < 1:
         raise ValueError("max_jobs must be at least 1")
@@ -111,6 +146,10 @@ async def run_carwale_city_prices(
             active_workers = workers
             active_requests_per_second = requests_per_second
             active_mongo_batch_size = mongo_batch_size
+            active_pause_every_requests = (
+                pause_every_requests if pause_every_requests is not None else 0
+            )
+            active_pause_seconds = pause_seconds if pause_seconds is not None else 0.0
 
             run = CarWaleCityPriceRun.create(
                 cars_directory=str(active_cars_directory),
@@ -122,6 +161,8 @@ async def run_carwale_city_prices(
                 workers=active_workers,
                 requests_per_second=(active_requests_per_second),
                 mongo_batch_size=(active_mongo_batch_size),
+                pause_every_requests=(active_pause_every_requests),
+                pause_seconds=active_pause_seconds,
             )
 
             await carwale_city_price_run_repository.create(run)
@@ -133,6 +174,21 @@ async def run_carwale_city_prices(
             existing_run = await carwale_city_price_run_repository.require(
                 normalized_resume_run_id
             )
+
+            if pause_override_requested:
+                existing_run = (
+                    await carwale_city_price_run_repository.update_pause_settings(
+                        normalized_resume_run_id,
+                        pause_every_requests=(
+                            pause_every_requests
+                            if pause_every_requests is not None
+                            else 0
+                        ),
+                        pause_seconds=(
+                            pause_seconds if pause_seconds is not None else 0.0
+                        ),
+                    )
+                )
 
             resumed_run = await carwale_city_price_run_repository.mark_resumed(
                 normalized_resume_run_id
@@ -152,6 +208,8 @@ async def run_carwale_city_prices(
             active_workers = existing_run.settings.workers
             active_requests_per_second = existing_run.settings.requests_per_second
             active_mongo_batch_size = existing_run.settings.mongo_batch_size
+            active_pause_every_requests = existing_run.settings.pause_every_requests
+            active_pause_seconds = existing_run.settings.pause_seconds
 
         logger_service.info(
             (
@@ -167,7 +225,11 @@ async def run_carwale_city_prices(
                 "requests_per_second="
                 f"{active_requests_per_second:.2f}, "
                 "mongo_batch_size="
-                f"{active_mongo_batch_size}"
+                f"{active_mongo_batch_size}, "
+                "pause_every_requests="
+                f"{active_pause_every_requests}, "
+                "pause_seconds="
+                f"{active_pause_seconds:.2f}"
             ),
             context="CarWaleCityPricesCommand",
         )
@@ -190,6 +252,8 @@ async def run_carwale_city_prices(
         async with create_carwale_async_client(
             concurrency=active_workers,
             requests_per_second=(active_requests_per_second),
+            pause_every_requests=(active_pause_every_requests),
+            pause_seconds=active_pause_seconds,
         ) as client:
             executor = CarWaleCityPriceExecutor(client)
 
@@ -292,6 +356,8 @@ async def run_carwale_city_prices(
             "workers": active_workers,
             "requestsPerSecond": (active_requests_per_second),
             "mongoBatchSize": (active_mongo_batch_size),
+            "pauseEveryRequests": (active_pause_every_requests),
+            "pauseSeconds": active_pause_seconds,
             "maxJobs": active_max_jobs,
             "carsDirectory": str(active_cars_directory),
             "citiesFile": str(active_cities_file),

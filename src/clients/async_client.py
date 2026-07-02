@@ -36,6 +36,8 @@ class AsyncClientMetrics:
     access_denied_responses: int = 0
     access_denied_circuit_trips: int = 0
     access_denied_circuit_rejections: int = 0
+    scheduled_pauses: int = 0
+    scheduled_pause_seconds: float = 0.0
     network_errors: int = 0
     json_decode_errors: int = 0
     total_attempt_duration_seconds: float = 0.0
@@ -63,6 +65,11 @@ class AsyncClientMetrics:
             "access_denied_responses": self.access_denied_responses,
             "access_denied_circuit_trips": (self.access_denied_circuit_trips),
             "access_denied_circuit_rejections": (self.access_denied_circuit_rejections),
+            "scheduled_pauses": self.scheduled_pauses,
+            "scheduled_pause_seconds": round(
+                self.scheduled_pause_seconds,
+                2,
+            ),
             "network_errors": self.network_errors,
             "json_decode_errors": self.json_decode_errors,
             "average_attempt_duration_seconds": round(
@@ -115,6 +122,8 @@ class AsyncExternalHttpClient:
         user_agents: Sequence[str] | None = None,
         concurrency: int = 20,
         requests_per_second: float = 10.0,
+        pause_every_requests: int = 0,
+        pause_seconds: float = 0.0,
         max_retries: int = 3,
         connect_timeout: float = 10.0,
         read_timeout: float = 30.0,
@@ -137,6 +146,8 @@ class AsyncExternalHttpClient:
             user_agents=user_agents,
             concurrency=concurrency,
             requests_per_second=requests_per_second,
+            pause_every_requests=pause_every_requests,
+            pause_seconds=pause_seconds,
             max_retries=max_retries,
             connect_timeout=connect_timeout,
             read_timeout=read_timeout,
@@ -150,6 +161,8 @@ class AsyncExternalHttpClient:
         self.base_url = normalized_base_url
         self.concurrency = concurrency
         self.requests_per_second = float(requests_per_second)
+        self.pause_every_requests = pause_every_requests
+        self.pause_seconds = float(pause_seconds)
         self.max_retries = max_retries
         self.log_successful_requests = log_successful_requests
 
@@ -159,6 +172,7 @@ class AsyncExternalHttpClient:
         self._rate_condition = asyncio.Condition()
         self._last_request_started_at: float | None = None
         self._blocked_until = 0.0
+        self._request_starts_since_pause = 0
 
         # A 401/403 from a protected upstream normally applies to the whole
         # client/IP, not only one request. Once opened, this circuit prevents
@@ -240,6 +254,10 @@ class AsyncExternalHttpClient:
                 f"concurrency={self.concurrency}, "
                 "requests_per_second="
                 f"{self.requests_per_second:.2f}, "
+                "pause_every_requests="
+                f"{self.pause_every_requests}, "
+                "pause_seconds="
+                f"{self.pause_seconds:.2f}, "
                 f"max_connections={max_connections}, "
                 "max_keepalive_connections="
                 f"{max_keepalive_connections}, "
@@ -300,6 +318,8 @@ class AsyncExternalHttpClient:
         user_agents: Sequence[str] | None,
         concurrency: int,
         requests_per_second: float,
+        pause_every_requests: int,
+        pause_seconds: float,
         max_retries: int,
         connect_timeout: float,
         read_timeout: float,
@@ -328,6 +348,26 @@ class AsyncExternalHttpClient:
             value=requests_per_second,
             allow_zero=True,
         )
+
+        if isinstance(pause_every_requests, bool) or not isinstance(
+            pause_every_requests, int
+        ):
+            raise ValueError("pause_every_requests must be an integer")
+
+        if pause_every_requests < 0:
+            raise ValueError("pause_every_requests cannot be negative")
+
+        cls._validate_positive_number(
+            name="pause_seconds",
+            value=pause_seconds,
+            allow_zero=True,
+        )
+
+        if (pause_every_requests > 0) != (pause_seconds > 0):
+            raise ValueError(
+                "pause_every_requests and pause_seconds must "
+                "both be greater than zero or both be zero"
+            )
 
         if isinstance(max_retries, bool) or not isinstance(max_retries, int):
             raise ValueError("max_retries must be an integer")
@@ -481,6 +521,34 @@ class AsyncExternalHttpClient:
                     )
 
                 current_time = time.monotonic()
+
+                should_start_scheduled_pause = (
+                    self.pause_every_requests > 0
+                    and self._request_starts_since_pause >= self.pause_every_requests
+                )
+
+                if should_start_scheduled_pause:
+                    self._request_starts_since_pause = 0
+                    self._blocked_until = max(
+                        self._blocked_until,
+                        current_time + self.pause_seconds,
+                    )
+                    self._metrics.scheduled_pauses += 1
+                    self._metrics.scheduled_pause_seconds += self.pause_seconds
+
+                    logger_service.info(
+                        (
+                            "Scheduled external HTTP pause started: "
+                            "pause_number="
+                            f"{self._metrics.scheduled_pauses}, "
+                            "after_requests="
+                            f"{self.pause_every_requests}, "
+                            "duration_seconds="
+                            f"{self.pause_seconds:.2f}"
+                        ),
+                        context=self.__class__.__name__,
+                    )
+
                 interval_ready_at = current_time
 
                 if (
@@ -501,6 +569,7 @@ class AsyncExternalHttpClient:
 
                 if remaining <= 0:
                     self._last_request_started_at = current_time
+                    self._request_starts_since_pause += 1
                     return
 
                 try:

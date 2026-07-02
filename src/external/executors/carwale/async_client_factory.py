@@ -12,6 +12,8 @@ def create_carwale_async_client(
     *,
     concurrency: int = 20,
     requests_per_second: float = 10.0,
+    pause_every_requests: int = 0,
+    pause_seconds: float = 0.0,
 ) -> AsyncExternalHttpClient:
     if concurrency < 1:
         raise ValueError("concurrency must be at least 1")
@@ -21,6 +23,18 @@ def create_carwale_async_client(
 
     if requests_per_second <= 0:
         raise ValueError("requests_per_second must be greater than zero")
+
+    if pause_every_requests < 0:
+        raise ValueError("pause_every_requests cannot be negative")
+
+    if pause_seconds < 0:
+        raise ValueError("pause_seconds cannot be negative")
+
+    if (pause_every_requests > 0) != (pause_seconds > 0):
+        raise ValueError(
+            "pause_every_requests and pause_seconds must "
+            "both be greater than zero or both be zero"
+        )
 
     user_agent = choose_user_agent(
         category="CHROME_USER_AGENTS",
@@ -42,6 +56,8 @@ def create_carwale_async_client(
         default_headers=CARWALE_DEFAULT_HEADERS,
         concurrency=concurrency,
         requests_per_second=requests_per_second,
+        pause_every_requests=pause_every_requests,
+        pause_seconds=pause_seconds,
         max_retries=3,
         connect_timeout=10.0,
         read_timeout=45.0,

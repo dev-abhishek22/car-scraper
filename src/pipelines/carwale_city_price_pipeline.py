@@ -70,6 +70,7 @@ class CarWaleCityPricePipelineStats:
             "inserted": self.inserted,
             "matched": self.matched,
             "modified": self.modified,
+            "failureRecordsWritten": (self.failure_records_written),
         }
 
     def to_dict(
@@ -160,6 +161,7 @@ class CarWaleCityPricePipeline:
         self._stats = CarWaleCityPricePipelineStats()
         self._stop_reason: str | None = None
         self._stop_http_status: int | None = None
+        self._access_denied_failure_recorded = False
 
     @property
     def stats(self) -> CarWaleCityPricePipelineStats:
@@ -243,6 +245,12 @@ class CarWaleCityPricePipeline:
         self._stop_http_status = http_status
         stop_event.set()
         return True
+
+    @staticmethod
+    def _is_local_access_denied_rejection(
+        error: ExternalAccessDeniedError,
+    ) -> bool:
+        return "access-denied circuit is open" in str(error).lower()
 
     async def _queue_candidate_batch(
         self,
@@ -407,30 +415,56 @@ class CarWaleCityPricePipeline:
                     await result_queue.put(record)
                     self._stats.successful += 1
 
-                except Exception as error:
+                except ExternalAccessDeniedError as error:
                     retryable, http_status = self._classify_failure(error)
-                    access_denied = isinstance(
-                        error,
-                        ExternalAccessDeniedError,
+                    local_rejection = self._is_local_access_denied_rejection(error)
+
+                    opened = self._open_circuit_breaker(
+                        stop_event=stop_event,
+                        reason=STOP_REASON_ACCESS_DENIED,
+                        http_status=http_status or 403,
                     )
 
-                    if access_denied:
-                        opened = self._open_circuit_breaker(
-                            stop_event=stop_event,
-                            reason=STOP_REASON_ACCESS_DENIED,
-                            http_status=http_status or 403,
+                    if opened:
+                        logger_service.error(
+                            (
+                                "CarWale access denied. The global "
+                                "circuit breaker is open. New requests "
+                                "will stop and MongoDB queues will flush."
+                            ),
+                            exception=error,
+                            context="CarWaleCityPricePipeline",
                         )
 
-                        if opened:
-                            logger_service.error(
-                                (
-                                    "CarWale access denied. The global "
-                                    "circuit breaker is open. New requests "
-                                    "will stop and MongoDB queues will flush."
-                                ),
-                                exception=error,
-                                context="CarWaleCityPricePipeline",
-                            )
+                    # Only the request that actually received the remote
+                    # 401/403 is a failure. Workers rejected locally after
+                    # the HTTP client's circuit opens were never attempted
+                    # and must remain pending for normal resume.
+                    if not local_rejection and not self._access_denied_failure_recorded:
+                        self._access_denied_failure_recorded = True
+
+                        failure = CarWaleCityPriceFailure.create(
+                            run_id=run_id,
+                            job=job,
+                            error=error,
+                            retryable=retryable,
+                            http_status=http_status,
+                        )
+                        await failure_queue.put(failure)
+                        self._stats.failed += 1
+
+                        self._record_failure_sample(
+                            job=job,
+                            error=error,
+                            retryable=retryable,
+                            http_status=http_status,
+                            access_denied=True,
+                        )
+
+                    continue
+
+                except Exception as error:
+                    retryable, http_status = self._classify_failure(error)
 
                     failure = CarWaleCityPriceFailure.create(
                         run_id=run_id,
@@ -447,7 +481,7 @@ class CarWaleCityPricePipeline:
                         error=error,
                         retryable=retryable,
                         http_status=http_status,
-                        access_denied=access_denied,
+                        access_denied=False,
                     )
 
                     if self._stats.failed >= 10 and self._stats.successful == 0:
@@ -737,6 +771,7 @@ class CarWaleCityPricePipeline:
         self._stats = CarWaleCityPricePipelineStats()
         self._stop_reason = None
         self._stop_http_status = None
+        self._access_denied_failure_recorded = False
 
         started_at = time.monotonic()
         stop_event = asyncio.Event()

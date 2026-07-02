@@ -251,6 +251,65 @@ class CarWaleCityPriceRunRepository:
                 "CarWale city-price run was not found: " f"{normalized_run_id}"
             )
 
+    async def update_pause_settings(
+        self,
+        run_id: str,
+        *,
+        pause_every_requests: int,
+        pause_seconds: float,
+    ) -> CarWaleCityPriceRun:
+        normalized_run_id = self._normalize_run_id(run_id)
+
+        if (
+            isinstance(pause_every_requests, bool)
+            or not isinstance(pause_every_requests, int)
+            or pause_every_requests < 0
+        ):
+            raise ValueError("pause_every_requests must be a non-negative integer")
+
+        if (
+            isinstance(pause_seconds, bool)
+            or not isinstance(pause_seconds, (int, float))
+            or pause_seconds < 0
+        ):
+            raise ValueError("pause_seconds must be a non-negative number")
+
+        pause_enabled = pause_every_requests > 0
+        duration_enabled = float(pause_seconds) > 0
+
+        if pause_enabled != duration_enabled:
+            raise ValueError(
+                "pause_every_requests and pause_seconds must "
+                "both be greater than zero or both be zero"
+            )
+
+        await self._connection.connect()
+
+        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+
+        current_time = datetime.now(timezone.utc)
+
+        document = await collection.find_one_and_update(
+            {
+                "_id": normalized_run_id,
+            },
+            {
+                "$set": {
+                    "settings.pauseEveryRequests": (pause_every_requests),
+                    "settings.pauseSeconds": float(pause_seconds),
+                    "updatedAt": current_time,
+                }
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if document is None:
+            raise CarWaleCityPriceRunNotFoundError(
+                "CarWale city-price run was not found: " f"{normalized_run_id}"
+            )
+
+        return CarWaleCityPriceRun.model_validate(document)
+
     async def mark_completed(
         self,
         run_id: str,

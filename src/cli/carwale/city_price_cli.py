@@ -56,6 +56,22 @@ def _positive_float(
     return parsed_value
 
 
+def _non_negative_float(
+    value: str,
+) -> float:
+    try:
+        parsed_value = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"Expected a number, received {value!r}"
+        ) from error
+
+    if parsed_value < 0:
+        raise argparse.ArgumentTypeError("Value cannot be negative")
+
+    return parsed_value
+
+
 def _non_empty_string(
     value: str,
 ) -> str:
@@ -81,6 +97,8 @@ def _handle_carwale_city_prices(
                 workers=args.workers,
                 requests_per_second=(args.requests_per_second),
                 mongo_batch_size=(args.mongo_batch_size),
+                pause_every_requests=(args.pause_every_requests),
+                pause_seconds=args.pause_seconds,
                 max_jobs=args.max_jobs,
                 resume_run_id=args.resume_run_id,
                 failed_only=args.failed_only,
@@ -239,6 +257,36 @@ def add_carwale_city_prices_command(
             "to MongoDB per batch. Failure records "
             "use a smaller protected batch internally. "
             "Default: 100"
+        ),
+    )
+
+    parser.add_argument(
+        "--pause-every-requests",
+        type=_integer_in_range(
+            minimum=0,
+        ),
+        default=None,
+        metavar="COUNT",
+        help=(
+            "Pause all new HTTP request starts after "
+            "this many actual request attempts. Use "
+            "together with --pause-seconds. Use 0 with "
+            "--pause-seconds 0 to disable a saved pause "
+            "while resuming."
+        ),
+    )
+
+    parser.add_argument(
+        "--pause-seconds",
+        "--pause",
+        dest="pause_seconds",
+        type=_non_negative_float,
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "Global pause duration after each configured "
+            "--pause-every-requests interval. The shorter "
+            "alias is --pause."
         ),
     )
 
