@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-from typing import Any
+from typing import Any, Callable
 
 from src.commands.carwale_city_prices import (
     DEFAULT_CARS_DIRECTORY,
@@ -11,26 +11,97 @@ from src.commands.carwale_city_prices import (
     run_carwale_city_prices,
 )
 
+ArgumentParserType = Callable[[str], Any]
+
+
+def _integer_in_range(
+    *,
+    minimum: int,
+    maximum: int | None = None,
+) -> ArgumentParserType:
+    def parse(value: str) -> int:
+        try:
+            parsed_value = int(value)
+        except ValueError as error:
+            raise argparse.ArgumentTypeError(
+                f"Expected an integer, received {value!r}"
+            ) from error
+
+        if parsed_value < minimum:
+            raise argparse.ArgumentTypeError(f"Value must be at least {minimum}")
+
+        if maximum is not None and parsed_value > maximum:
+            raise argparse.ArgumentTypeError(
+                f"Value must be between {minimum} and {maximum}"
+            )
+
+        return parsed_value
+
+    return parse
+
+
+def _positive_float(
+    value: str,
+) -> float:
+    try:
+        parsed_value = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"Expected a number, received {value!r}"
+        ) from error
+
+    if parsed_value <= 0:
+        raise argparse.ArgumentTypeError("Value must be greater than zero")
+
+    return parsed_value
+
+
+def _non_empty_string(
+    value: str,
+) -> str:
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        raise argparse.ArgumentTypeError("Value cannot be empty")
+
+    return normalized_value
+
 
 def _handle_carwale_city_prices(
     args: argparse.Namespace,
 ) -> int:
-    result = asyncio.run(
-        run_carwale_city_prices(
-            cars_directory=args.cars_directory,
-            cities_file=args.cities_file,
-            brand=args.brand,
-            model=args.model,
-            city=args.city,
-            workers=args.workers,
-            requests_per_second=(args.requests_per_second),
-            mongo_batch_size=(args.mongo_batch_size),
-            max_jobs=args.max_jobs,
-            resume_run_id=(args.resume_run_id),
-            failed_only=args.failed_only,
-            retry_terminal_failures=(args.retry_terminal_failures),
+    try:
+        result = asyncio.run(
+            run_carwale_city_prices(
+                cars_directory=args.cars_directory,
+                cities_file=args.cities_file,
+                brand=args.brand,
+                model=args.model,
+                city=args.city,
+                workers=args.workers,
+                requests_per_second=(args.requests_per_second),
+                mongo_batch_size=(args.mongo_batch_size),
+                max_jobs=args.max_jobs,
+                resume_run_id=args.resume_run_id,
+                failed_only=args.failed_only,
+                retry_terminal_failures=(args.retry_terminal_failures),
+            )
         )
-    )
+
+    except KeyboardInterrupt:
+        print(
+            json.dumps(
+                {
+                    "command": "carwale-city-prices",
+                    "status": "interrupted",
+                    "stopReason": "keyboard_interrupt",
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+
+        return 130
 
     print(
         json.dumps(
@@ -41,15 +112,27 @@ def _handle_carwale_city_prices(
         )
     )
 
+    status = result.get("status")
+
+    if status == "interrupted":
+        return 2
+
+    if status in {
+        "failed",
+        "cancelled",
+    }:
+        return 1
+
     unresolved_failures = result.get(
         "unresolvedFailures",
         0,
     )
 
     if (
-        isinstance(
+        isinstance(unresolved_failures, int)
+        and not isinstance(
             unresolved_failures,
-            int,
+            bool,
         )
         and unresolved_failures > 0
     ):
@@ -66,18 +149,16 @@ def add_carwale_city_prices_command(
         "carwale-city-prices",
         help=("Fetch CarWale version prices " "for saved cities"),
         description=(
-            "Read saved CarWale car and city "
-            "files, generate every version-city "
-            "combination, fetch PIC-page pricing, "
-            "and save results to MongoDB. "
-            "Supports resumable runs and "
-            "failed-page retries."
+            "Read saved CarWale car and city files, "
+            "generate version-city combinations, "
+            "fetch PIC-page pricing, save results to "
+            "MongoDB, and support resumable runs."
         ),
     )
 
     parser.add_argument(
         "--brand",
-        type=str,
+        type=_non_empty_string,
         default=None,
         metavar="MAKE_MASKING_NAME",
         help=("Scrape one saved CarWale brand, " "for example 'audi'."),
@@ -85,7 +166,7 @@ def add_carwale_city_prices_command(
 
     parser.add_argument(
         "--model",
-        type=str,
+        type=_non_empty_string,
         default=None,
         metavar="MODEL_MASKING_NAME",
         help=(
@@ -97,7 +178,7 @@ def add_carwale_city_prices_command(
 
     parser.add_argument(
         "--city",
-        type=str,
+        type=_non_empty_string,
         default=None,
         metavar="CITY_MASKING_NAME",
         help=("Scrape one city only, " "for example 'mumbai'."),
@@ -105,41 +186,42 @@ def add_carwale_city_prices_command(
 
     parser.add_argument(
         "--cars-directory",
-        type=str,
+        type=_non_empty_string,
         default=str(DEFAULT_CARS_DIRECTORY),
+        metavar="PATH",
         help=(
-            "Directory containing saved "
-            "CarWale car JSON files. "
+            "Directory containing saved CarWale "
+            "car JSON files. "
             f"Default: {DEFAULT_CARS_DIRECTORY}"
         ),
     )
 
     parser.add_argument(
         "--cities-file",
-        type=str,
+        type=_non_empty_string,
         default=str(DEFAULT_CITIES_FILE),
+        metavar="PATH",
         help=(
-            "Path to the saved CarWale "
-            "cities JSON file. "
+            "Path to the saved CarWale cities "
+            "JSON file. "
             f"Default: {DEFAULT_CITIES_FILE}"
         ),
     )
 
     parser.add_argument(
         "--workers",
-        type=int,
-        default=5,
-        choices=range(
-            1,
-            501,
+        type=_integer_in_range(
+            minimum=1,
+            maximum=500,
         ),
-        metavar="[1-500]",
+        default=5,
+        metavar="COUNT",
         help=("Number of concurrent HTTP workers. " "Allowed: 1-500. Default: 5"),
     )
 
     parser.add_argument(
         "--requests-per-second",
-        type=float,
+        type=_positive_float,
         default=2.0,
         metavar="RPS",
         help=("Maximum global request-start rate " "across all workers. Default: 2"),
@@ -147,54 +229,58 @@ def add_carwale_city_prices_command(
 
     parser.add_argument(
         "--mongo-batch-size",
-        type=int,
+        type=_integer_in_range(
+            minimum=1,
+        ),
         default=100,
         metavar="COUNT",
         help=(
-            "Number of successful or failed "
-            "records written to MongoDB per "
-            "batch. Default: 100"
+            "Number of successful records written "
+            "to MongoDB per batch. Failure records "
+            "use a smaller protected batch internally. "
+            "Default: 100"
         ),
     )
 
     parser.add_argument(
         "--max-jobs",
-        type=int,
+        type=_integer_in_range(
+            minimum=1,
+        ),
         default=None,
         metavar="COUNT",
         help=(
-            "Stop after generating this many "
-            "version-city jobs. Useful for "
-            "testing."
+            "Stop after generating this many " "version-city jobs. Useful for testing."
         ),
     )
 
     parser.add_argument(
         "--resume-run-id",
-        type=str,
+        type=_non_empty_string,
         default=None,
         metavar="RUN_ID",
         help=(
-            "Resume an existing CarWale " "city-price run using its saved " "run ID."
+            "Resume an existing CarWale city-price "
+            "run using its saved run ID and settings."
         ),
     )
 
     parser.add_argument(
         "--failed-only",
         action="store_true",
-        help=("Retry only unresolved failures " "stored for --resume-run-id."),
+        help=("Retry only unresolved failures stored " "for --resume-run-id."),
     )
 
     parser.add_argument(
         "--retry-terminal-failures",
         action="store_true",
         help=(
-            "Retry terminal failures such as "
-            "invalid responses and HTTP 404 "
-            "instead of skipping them."
+            "Include terminal failures such as "
+            "invalid responses or HTTP 404 in a "
+            "failed-only retry."
         ),
     )
 
     parser.set_defaults(
-        handler=(_handle_carwale_city_prices),
+        handler=_handle_carwale_city_prices,
     )

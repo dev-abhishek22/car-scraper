@@ -18,12 +18,14 @@ CarWaleCityPriceRunStatus = Literal[
 class CarWaleCityPriceRunFilters(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
+        populate_by_name=True,
         str_strip_whitespace=True,
     )
 
     brand: str | None = None
     model: str | None = None
     city: str | None = None
+
     max_jobs: int | None = Field(
         default=None,
         alias="maxJobs",
@@ -35,6 +37,7 @@ class CarWaleCityPriceRunSettings(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
+        str_strip_whitespace=True,
     )
 
     cars_directory: str = Field(
@@ -66,6 +69,7 @@ class CarWaleCityPriceRun(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
         extra="ignore",
+        str_strip_whitespace=True,
     )
 
     run_id: str = Field(
@@ -118,6 +122,12 @@ class CarWaleCityPriceRun(BaseModel):
         ge=0,
     )
 
+    failure_records_written: int = Field(
+        default=0,
+        alias="failureRecordsWritten",
+        ge=0,
+    )
+
     resume_count: int = Field(
         default=0,
         alias="resumeCount",
@@ -142,6 +152,23 @@ class CarWaleCityPriceRun(BaseModel):
         alias="completedAt",
     )
 
+    stopped_at: datetime | None = Field(
+        default=None,
+        alias="stoppedAt",
+    )
+
+    stop_reason: str | None = Field(
+        default=None,
+        alias="stopReason",
+    )
+
+    stop_http_status: int | None = Field(
+        default=None,
+        alias="stopHttpStatus",
+        ge=100,
+        le=599,
+    )
+
     error_type: str | None = Field(
         default=None,
         alias="errorType",
@@ -151,6 +178,20 @@ class CarWaleCityPriceRun(BaseModel):
         default=None,
         alias="errorMessage",
     )
+
+    @property
+    def is_resumable(self) -> bool:
+        return self.status in {
+            "running",
+            "completed",
+            "interrupted",
+            "failed",
+            "cancelled",
+        }
+
+    @property
+    def was_stopped_early(self) -> bool:
+        return self.status != "completed" and self.stop_reason is not None
 
     @classmethod
     def create(
@@ -181,11 +222,28 @@ class CarWaleCityPriceRun(BaseModel):
                 carsDirectory=cars_directory,
                 citiesFile=cities_file,
                 workers=workers,
-                requestsPerSecond=(requests_per_second),
-                mongoBatchSize=(mongo_batch_size),
+                requestsPerSecond=requests_per_second,
+                mongoBatchSize=mongo_batch_size,
             ),
+            produced=0,
+            skipped=0,
+            successful=0,
+            failed=0,
+            written=0,
+            inserted=0,
+            matched=0,
+            modified=0,
+            failureRecordsWritten=0,
+            resumeCount=0,
             startedAt=current_time,
             updatedAt=current_time,
+            resumedAt=None,
+            completedAt=None,
+            stoppedAt=None,
+            stopReason=None,
+            stopHttpStatus=None,
+            errorType=None,
+            errorMessage=None,
         )
 
     def to_mongo_document(

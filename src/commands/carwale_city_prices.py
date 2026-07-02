@@ -4,9 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
-from src.databases.mongodb import (
-    mongo_connection,
-)
+from src.databases.mongodb import mongo_connection
 from src.external.executors.carwale.async_client_factory import (
     create_carwale_async_client,
 )
@@ -38,10 +36,26 @@ DEFAULT_CARS_DIRECTORY = Path("data/raw/carwale/car")
 DEFAULT_CITIES_FILE = Path("data/raw/carwale/cities.json")
 
 
+def _build_interruption_error(
+    *,
+    stop_reason: str | None,
+    stop_http_status: int | None,
+) -> RuntimeError:
+    message = "CarWale city-price pipeline stopped early"
+
+    if stop_reason:
+        message += f": reason={stop_reason}"
+
+    if stop_http_status is not None:
+        message += f", http_status={stop_http_status}"
+
+    return RuntimeError(message)
+
+
 async def run_carwale_city_prices(
     *,
-    cars_directory: str | Path = (DEFAULT_CARS_DIRECTORY),
-    cities_file: str | Path = (DEFAULT_CITIES_FILE),
+    cars_directory: str | Path = DEFAULT_CARS_DIRECTORY,
+    cities_file: str | Path = DEFAULT_CITIES_FILE,
     brand: str | None = None,
     model: str | None = None,
     city: str | None = None,
@@ -54,7 +68,7 @@ async def run_carwale_city_prices(
     retry_terminal_failures: bool = False,
 ) -> dict[str, Any]:
     if failed_only and resume_run_id is None:
-        raise ValueError("--failed-only requires " "--resume-run-id")
+        raise ValueError("--failed-only requires --resume-run-id")
 
     if model is not None and brand is None:
         raise ValueError("model requires brand")
@@ -63,10 +77,13 @@ async def run_carwale_city_prices(
         raise ValueError("workers must be at least 1")
 
     if requests_per_second <= 0:
-        raise ValueError("requests_per_second must be " "greater than zero")
+        raise ValueError("requests_per_second must be greater than zero")
 
     if mongo_batch_size < 1:
         raise ValueError("mongo_batch_size must be at least 1")
+
+    if max_jobs is not None and max_jobs < 1:
+        raise ValueError("max_jobs must be at least 1")
 
     normalized_resume_run_id = (
         resume_run_id.strip() if resume_run_id is not None else None
@@ -77,7 +94,6 @@ async def run_carwale_city_prices(
 
     run_id: str | None = None
     pipeline: CarWaleCityPricePipeline | None = None
-
     client_metrics: dict[str, Any] = {}
 
     await mongo_connection.connect()
@@ -85,7 +101,6 @@ async def run_carwale_city_prices(
     try:
         if normalized_resume_run_id is None:
             active_cars_directory = Path(cars_directory)
-
             active_cities_file = Path(cities_file)
 
             active_brand = brand
@@ -127,21 +142,15 @@ async def run_carwale_city_prices(
             resumed = True
 
             active_cars_directory = Path(existing_run.settings.cars_directory)
-
             active_cities_file = Path(existing_run.settings.cities_file)
 
             active_brand = existing_run.filters.brand
-
             active_model = existing_run.filters.model
-
             active_city = existing_run.filters.city
-
             active_max_jobs = existing_run.filters.max_jobs
 
             active_workers = existing_run.settings.workers
-
             active_requests_per_second = existing_run.settings.requests_per_second
-
             active_mongo_batch_size = existing_run.settings.mongo_batch_size
 
         logger_service.info(
@@ -160,7 +169,7 @@ async def run_carwale_city_prices(
                 "mongo_batch_size="
                 f"{active_mongo_batch_size}"
             ),
-            context=("CarWaleCityPricesCommand"),
+            context="CarWaleCityPricesCommand",
         )
 
         if failed_only:
@@ -168,15 +177,14 @@ async def run_carwale_city_prices(
                 run_id=run_id,
                 retryable_only=(not retry_terminal_failures),
             )
-
         else:
             jobs = iter_carwale_city_price_jobs(
                 cars_directory=(active_cars_directory),
-                cities_file=(active_cities_file),
-                selected_brand=(active_brand),
-                selected_model=(active_model),
-                selected_city=(active_city),
-                max_jobs=(active_max_jobs),
+                cities_file=active_cities_file,
+                selected_brand=active_brand,
+                selected_model=active_model,
+                selected_city=active_city,
+                max_jobs=active_max_jobs,
             )
 
         async with create_carwale_async_client(
@@ -204,7 +212,11 @@ async def run_carwale_city_prices(
                     100,
                 ),
                 mongo_batch_size=(active_mongo_batch_size),
-                resume_check_batch_size=(1_000),
+                failure_batch_size=min(
+                    active_mongo_batch_size,
+                    50,
+                ),
+                resume_check_batch_size=1_000,
                 progress_interval=10.0,
                 retry_terminal_failures=(retry_terminal_failures),
             )
@@ -225,15 +237,52 @@ async def run_carwale_city_prices(
             )
         )
 
-        completed_run = await carwale_city_price_run_repository.mark_completed(
-            run_id,
-            progress=(pipeline.progress_snapshot()),
+        stopped_early = bool(summary.get("stoppedEarly", False))
+
+        stop_reason_value = summary.get("stopReason")
+        stop_reason = (
+            stop_reason_value
+            if isinstance(stop_reason_value, str) and stop_reason_value.strip()
+            else None
         )
 
+        stop_http_status_value = summary.get("stopHttpStatus")
+        stop_http_status = (
+            stop_http_status_value
+            if isinstance(
+                stop_http_status_value,
+                int,
+            )
+            and not isinstance(
+                stop_http_status_value,
+                bool,
+            )
+            else None
+        )
+
+        if stopped_early:
+            interruption_error = _build_interruption_error(
+                stop_reason=stop_reason,
+                stop_http_status=(stop_http_status),
+            )
+
+            finished_run = await carwale_city_price_run_repository.mark_interrupted(
+                run_id,
+                progress=(pipeline.progress_snapshot()),
+                error=interruption_error,
+                stop_reason=stop_reason,
+                stop_http_status=(stop_http_status),
+            )
+        else:
+            finished_run = await carwale_city_price_run_repository.mark_completed(
+                run_id,
+                progress=(pipeline.progress_snapshot()),
+            )
+
         return {
-            "command": ("carwale-city-prices"),
+            "command": "carwale-city-prices",
             "runId": run_id,
-            "status": completed_run.status,
+            "status": finished_run.status,
             "resumed": resumed,
             "failedOnly": failed_only,
             "retryTerminalFailures": (retry_terminal_failures),
@@ -261,9 +310,34 @@ async def run_carwale_city_prices(
                         run_id,
                         progress=progress,
                         error=error,
+                        stop_reason=("keyboard_interrupt"),
                     )
                 )
+            except Exception as tracking_error:
+                logger_service.error(
+                    (
+                        "Unable to mark CarWale "
+                        "city-price run as "
+                        "interrupted: "
+                        f"run_id={run_id}"
+                    ),
+                    exception=tracking_error,
+                    context=("CarWaleCityPricesCommand"),
+                )
 
+        raise
+
+    except KeyboardInterrupt as error:
+        if run_id is not None:
+            progress = pipeline.progress_snapshot() if pipeline is not None else {}
+
+            try:
+                await carwale_city_price_run_repository.mark_interrupted(
+                    run_id,
+                    progress=progress,
+                    error=error,
+                    stop_reason=("keyboard_interrupt"),
+                )
             except Exception as tracking_error:
                 logger_service.error(
                     (
@@ -287,8 +361,8 @@ async def run_carwale_city_prices(
                     run_id,
                     progress=progress,
                     error=error,
+                    stop_reason=("pipeline_error"),
                 )
-
             except Exception as tracking_error:
                 logger_service.error(
                     (

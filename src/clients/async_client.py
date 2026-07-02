@@ -34,6 +34,8 @@ class AsyncClientMetrics:
     retries: int = 0
     rate_limited_responses: int = 0
     access_denied_responses: int = 0
+    access_denied_circuit_trips: int = 0
+    access_denied_circuit_rejections: int = 0
     network_errors: int = 0
     json_decode_errors: int = 0
     total_attempt_duration_seconds: float = 0.0
@@ -59,6 +61,8 @@ class AsyncClientMetrics:
             "retries": self.retries,
             "rate_limited_responses": self.rate_limited_responses,
             "access_denied_responses": self.access_denied_responses,
+            "access_denied_circuit_trips": (self.access_denied_circuit_trips),
+            "access_denied_circuit_rejections": (self.access_denied_circuit_rejections),
             "network_errors": self.network_errors,
             "json_decode_errors": self.json_decode_errors,
             "average_attempt_duration_seconds": round(
@@ -155,6 +159,14 @@ class AsyncExternalHttpClient:
         self._rate_condition = asyncio.Condition()
         self._last_request_started_at: float | None = None
         self._blocked_until = 0.0
+
+        # A 401/403 from a protected upstream normally applies to the whole
+        # client/IP, not only one request. Once opened, this circuit prevents
+        # workers that are still waiting for a rate slot from sending more
+        # traffic during the same scraper run.
+        self._access_denied_event = asyncio.Event()
+        self._access_denied_status: int | None = None
+        self._access_denied_url: str | None = None
 
         # Protects header/cookie mutations and request preparation.
         self._client_configuration_lock = asyncio.Lock()
@@ -413,11 +425,56 @@ class AsyncExternalHttpClient:
             self._active_requests -= 1
             self._lifecycle_condition.notify_all()
 
+    def _raise_if_access_denied_circuit_open(self) -> None:
+        if not self._access_denied_event.is_set():
+            return
+
+        self._metrics.access_denied_circuit_rejections += 1
+
+        status_code = self._access_denied_status or 403
+        safe_url = self._access_denied_url or self.base_url
+
+        raise ExternalAccessDeniedError(
+            "External website access-denied circuit is open: "
+            f"status={status_code}, url={safe_url}"
+        )
+
+    async def _trip_access_denied_circuit(
+        self,
+        response: httpx.Response,
+    ) -> None:
+        status_code = response.status_code
+        safe_url = self._safe_url(response.request.url)
+        opened_now = False
+
+        async with self._rate_condition:
+            if not self._access_denied_event.is_set():
+                self._access_denied_status = status_code
+                self._access_denied_url = safe_url
+                self._access_denied_event.set()
+                self._metrics.access_denied_circuit_trips += 1
+                opened_now = True
+
+            self._rate_condition.notify_all()
+
+        if opened_now:
+            logger_service.error(
+                (
+                    "External access-denied circuit opened: "
+                    f"status={status_code}, url={safe_url}. "
+                    "No additional HTTP attempts will start in this "
+                    "client session."
+                ),
+                context=self.__class__.__name__,
+            )
+
     async def _wait_for_request_slot(self) -> None:
         """Enforce global request pacing and any active cooldown."""
 
         async with self._rate_condition:
             while True:
+                self._raise_if_access_denied_circuit_open()
+
                 if self._closed:
                     raise ExternalClientError(
                         "Async HTTP client was closed while waiting for a request slot"
@@ -633,6 +690,8 @@ class AsyncExternalHttpClient:
 
         try:
             for attempt in range(1, total_attempts + 1):
+                self._raise_if_access_denied_circuit_open()
+
                 request = await self._build_request(
                     method=normalized_method,
                     endpoint=endpoint,
@@ -700,6 +759,7 @@ class AsyncExternalHttpClient:
 
                 if response.status_code in self.ACCESS_DENIED_STATUS_CODES:
                     self._metrics.access_denied_responses += 1
+                    await self._trip_access_denied_circuit(response)
 
                 if response.status_code == 429:
                     self._metrics.rate_limited_responses += 1
@@ -920,7 +980,15 @@ class AsyncExternalHttpClient:
         return self._active_requests
 
     def metrics_snapshot(self) -> dict[str, Any]:
-        return self._metrics.snapshot()
+        snapshot = self._metrics.snapshot()
+        snapshot["access_denied_circuit_open"] = self._access_denied_event.is_set()
+        snapshot["access_denied_status"] = self._access_denied_status
+        snapshot["access_denied_url"] = self._access_denied_url
+        return snapshot
+
+    @property
+    def access_denied_circuit_open(self) -> bool:
+        return self._access_denied_event.is_set()
 
     async def aclose(self) -> None:
         async with self._close_lock:

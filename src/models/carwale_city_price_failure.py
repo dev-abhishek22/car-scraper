@@ -14,6 +14,11 @@ CarWaleCityPriceFailureStatus = Literal[
     "resolved",
 ]
 
+ACCESS_DENIED_HTTP_STATUS_CODES = {
+    401,
+    403,
+}
+
 
 class CarWaleCityPriceFailure(BaseModel):
     model_config = ConfigDict(
@@ -79,6 +84,8 @@ class CarWaleCityPriceFailure(BaseModel):
         le=599,
     )
 
+    # retryable means eligible for a later failed-only resume.
+    # It does not mean that the HTTP client must immediately retry.
     retryable: bool
 
     status: CarWaleCityPriceFailureStatus = "failed"
@@ -100,6 +107,10 @@ class CarWaleCityPriceFailure(BaseModel):
         default=None,
         alias="resolvedAt",
     )
+
+    @property
+    def is_access_denied(self) -> bool:
+        return self.http_status in ACCESS_DENIED_HTTP_STATUS_CODES
 
     @staticmethod
     def build_failure_id(
@@ -133,12 +144,26 @@ class CarWaleCityPriceFailure(BaseModel):
         if not normalized_run_id:
             raise ValueError("run_id cannot be empty")
 
+        if http_status is not None and (
+            isinstance(http_status, bool)
+            or not isinstance(http_status, int)
+            or not 100 <= http_status <= 599
+        ):
+            raise ValueError("http_status must be an integer between 100 and 599")
+
         current_time = datetime.now(timezone.utc)
 
         error_message = str(error).strip()
 
         if not error_message:
             error_message = "Unknown city-price failure"
+
+        # A 401/403 opens the global circuit breaker and is not retried
+        # immediately. It remains retryable for a later failed-only resume
+        # after the external access block has cleared.
+        retryable_for_later = (
+            True if http_status in ACCESS_DENIED_HTTP_STATUS_CODES else retryable
+        )
 
         return cls(
             _id=cls.build_failure_id(
@@ -149,13 +174,13 @@ class CarWaleCityPriceFailure(BaseModel):
             jobId=job.item_key,
             versionId=job.version_id,
             cityId=job.city_id,
-            makeMaskingName=(job.make_masking_name),
-            modelMaskingName=(job.model_masking_name),
-            cityMaskingName=(job.city_masking_name),
+            makeMaskingName=job.make_masking_name,
+            modelMaskingName=job.model_masking_name,
+            cityMaskingName=job.city_masking_name,
             errorType=type(error).__name__,
             errorMessage=error_message,
             httpStatus=http_status,
-            retryable=retryable,
+            retryable=retryable_for_later,
             status="failed",
             attempts=1,
             firstFailedAt=current_time,
