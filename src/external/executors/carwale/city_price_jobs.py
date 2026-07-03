@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-import json
-from collections.abc import Iterator, Mapping
+from collections.abc import AsyncIterator, Mapping
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from src.logger.logger import logger_service
 from src.models.carwale_city_price_job import (
     CarWaleCityPriceJob,
+)
+from src.repositories.carwale_car_repository import (
+    carwale_car_repository,
+)
+from src.repositories.carwale_city_repository import (
+    carwale_city_repository,
 )
 
 INDIA_TIMEZONE = ZoneInfo("Asia/Kolkata")
@@ -17,28 +20,7 @@ CARWALE_DATE_FORMAT = "%m/%d/%Y %H:%M:%S"
 
 
 class CarWaleCityPriceJobSourceError(ValueError):
-    """Raised when saved CarWale input data is invalid."""
-
-
-def _read_json_file(
-    file_path: Path,
-) -> Any:
-    try:
-        return json.loads(
-            file_path.read_text(
-                encoding="utf-8",
-            )
-        )
-
-    except json.JSONDecodeError as error:
-        raise CarWaleCityPriceJobSourceError(
-            f"Invalid JSON file: {file_path}"
-        ) from error
-
-    except OSError as error:
-        raise CarWaleCityPriceJobSourceError(
-            f"Unable to read file: {file_path}"
-        ) from error
+    """Raised when MongoDB city-price input data is invalid."""
 
 
 def _normalize_optional_slug(
@@ -47,28 +29,32 @@ def _normalize_optional_slug(
     if value is None:
         return None
 
+    if not isinstance(
+        value,
+        str,
+    ):
+        raise ValueError("Slug filter must be a string or null")
+
     normalized_value = value.strip().lower()
 
-    if not normalized_value:
-        return None
-
-    return normalized_value
+    return normalized_value or None
 
 
 def _is_launched_by_date(
     value: Any,
 ) -> bool:
     """
-    Return True only when the CarWale launch date is today or in the past.
+    Return True only when the CarWale launch date is
+    today or in the past.
 
-    CarWale date example:
-        07/09/2026 00:00:00
-
-    Format:
+    Expected format:
         MM/DD/YYYY HH:MM:SS
     """
 
-    if not isinstance(value, str):
+    if not isinstance(
+        value,
+        str,
+    ):
         return False
 
     normalized_value = value.strip()
@@ -91,20 +77,10 @@ def _is_launched_by_date(
     return launched_at.date() <= current_date
 
 
-def load_carwale_cities(
-    cities_file: str | Path,
+async def _load_carwale_cities(
     *,
-    selected_city: str | None = None,
+    selected_city: str | None,
 ) -> list[tuple[int, str]]:
-    file_path = Path(cities_file)
-
-    payload = _read_json_file(file_path)
-
-    if not isinstance(payload, list):
-        raise CarWaleCityPriceJobSourceError(
-            "CarWale cities file must contain a JSON array"
-        )
-
     normalized_selected_city = _normalize_optional_slug(
         selected_city,
     )
@@ -112,47 +88,15 @@ def load_carwale_cities(
     cities: list[tuple[int, str]] = []
     seen_city_ids: set[int] = set()
 
-    for index, city in enumerate(payload):
-        if not isinstance(city, Mapping):
-            logger_service.warning(
-                f"Skipping invalid CarWale city: index={index}",
-                context="CarWaleCityPriceJobs",
-            )
-            continue
-
-        city_id = city.get("CityId")
-        city_masking_name = city.get(
-            "CityMaskingName",
-        )
-        is_deleted = city.get(
-            "IsDeleted",
-            False,
-        )
-
-        if is_deleted is True:
-            continue
-
-        if isinstance(city_id, bool) or not isinstance(city_id, int) or city_id <= 0:
-            logger_service.warning(
-                (f"Skipping CarWale city with invalid CityId: index={index}"),
-                context="CarWaleCityPriceJobs",
-            )
-            continue
-
-        if not isinstance(
-            city_masking_name,
-            str,
-        ):
-            continue
-
-        normalized_city_masking_name = city_masking_name.strip().lower()
-
-        if not normalized_city_masking_name:
-            continue
+    async for city in carwale_city_repository.iter_all(
+        include_deleted=False,
+    ):
+        city_id = city.city_id
+        city_masking_name = city.city_masking_name.strip().lower()
 
         if (
             normalized_selected_city is not None
-            and normalized_city_masking_name != normalized_selected_city
+            and city_masking_name != normalized_selected_city
         ):
             continue
 
@@ -164,43 +108,53 @@ def load_carwale_cities(
         cities.append(
             (
                 city_id,
-                normalized_city_masking_name,
+                city_masking_name,
             )
         )
 
     if not cities:
-        raise CarWaleCityPriceJobSourceError("No valid CarWale cities were found")
+        if normalized_selected_city is not None:
+            raise CarWaleCityPriceJobSourceError(
+                "No active CarWale city was found in "
+                "MongoDB for filter: "
+                f"city={normalized_selected_city!r}"
+            )
+
+        raise CarWaleCityPriceJobSourceError(
+            "No active CarWale cities were found in "
+            "MongoDB. Run carwale-cities first."
+        )
 
     return cities
 
 
-def iter_carwale_city_price_jobs(
+async def iter_carwale_city_price_jobs(
     *,
-    cars_directory: str | Path,
-    cities_file: str | Path,
     selected_brand: str | None = None,
     selected_model: str | None = None,
     selected_city: str | None = None,
     max_jobs: int | None = None,
-) -> Iterator[CarWaleCityPriceJob]:
-    cars_path = Path(cars_directory)
+) -> AsyncIterator[CarWaleCityPriceJob]:
+    """
+    Generate launched version-city jobs from MongoDB.
 
-    if not cars_path.exists():
-        raise CarWaleCityPriceJobSourceError(
-            (f"CarWale cars directory does not exist: {cars_path}")
-        )
+    Input collections:
+        carwale_cars
+        carwale_cities
 
-    if not cars_path.is_dir():
-        raise CarWaleCityPriceJobSourceError(
-            (f"CarWale cars path is not a directory: {cars_path}")
-        )
+    The pipeline, result storage, failures, run tracking,
+    resume checks, batching, and logs remain unchanged.
+    """
 
-    if max_jobs is not None and max_jobs < 1:
+    if max_jobs is not None and (
+        isinstance(max_jobs, bool) or not isinstance(max_jobs, int) or max_jobs < 1
+    ):
         raise ValueError("max_jobs must be greater than zero")
 
     normalized_brand = _normalize_optional_slug(
         selected_brand,
     )
+
     normalized_model = _normalize_optional_slug(
         selected_model,
     )
@@ -208,36 +162,18 @@ def iter_carwale_city_price_jobs(
     if normalized_model is not None and normalized_brand is None:
         raise ValueError("selected_model requires selected_brand")
 
-    cities = load_carwale_cities(
-        cities_file,
+    cities = await _load_carwale_cities(
         selected_city=selected_city,
     )
 
     seen_version_ids: set[int] = set()
     generated_jobs = 0
+    matched_car_records = 0
 
-    car_files = sorted(
-        cars_path.rglob("*.json"),
-    )
+    async for version_record in carwale_car_repository.iter_versions():
+        make_masking_name = version_record.get("makeMaskingName")
 
-    for car_file in car_files:
-        payload = _read_json_file(
-            car_file,
-        )
-
-        if not isinstance(payload, Mapping):
-            logger_service.warning(
-                (f"Skipping invalid CarWale car file: file={car_file}"),
-                context="CarWaleCityPriceJobs",
-            )
-            continue
-
-        make_masking_name = payload.get(
-            "makeMaskingName",
-        )
-        model_masking_name = payload.get(
-            "modelMaskingName",
-        )
+        model_masking_name = version_record.get("modelMaskingName")
 
         if not isinstance(
             make_masking_name,
@@ -251,80 +187,83 @@ def iter_carwale_city_price_jobs(
         ):
             continue
 
-        make_masking_name = make_masking_name.strip().lower()
-        model_masking_name = model_masking_name.strip().lower()
+        normalized_make_masking_name = make_masking_name.strip().lower()
 
-        if not make_masking_name:
+        normalized_model_masking_name = model_masking_name.strip().lower()
+
+        if not normalized_make_masking_name or not normalized_model_masking_name:
             continue
 
-        if not model_masking_name:
+        if (
+            normalized_brand is not None
+            and normalized_make_masking_name != normalized_brand
+        ):
             continue
 
-        if normalized_brand is not None and make_masking_name != normalized_brand:
+        if (
+            normalized_model is not None
+            and normalized_model_masking_name != normalized_model
+        ):
             continue
 
-        if normalized_model is not None and model_masking_name != normalized_model:
+        version = version_record.get("version")
+
+        if not isinstance(
+            version,
+            Mapping,
+        ):
             continue
 
-        data = payload.get("data")
+        launched_on = version.get("launchedOn")
 
-        if not isinstance(data, Mapping):
+        if not _is_launched_by_date(launched_on):
             continue
 
-        versions = data.get("versions")
+        version_id = version.get("versionId")
 
-        if not isinstance(versions, list):
+        if (
+            isinstance(version_id, bool)
+            or not isinstance(version_id, int)
+            or version_id <= 0
+        ):
             continue
 
-        for version in versions:
-            if not isinstance(
-                version,
-                Mapping,
-            ):
-                continue
+        if version_id in seen_version_ids:
+            continue
 
-            launched_on = version.get(
-                "launchedOn",
+        seen_version_ids.add(version_id)
+        matched_car_records += 1
+
+        for (
+            city_id,
+            city_masking_name,
+        ) in cities:
+            yield CarWaleCityPriceJob(
+                version_id=version_id,
+                city_id=city_id,
+                make_masking_name=(normalized_make_masking_name),
+                model_masking_name=(normalized_model_masking_name),
+                city_masking_name=(city_masking_name),
             )
 
-            # Skip upcoming versions, missing launch dates,
-            # and invalid launch-date values.
-            if not _is_launched_by_date(
-                launched_on,
-            ):
-                continue
+            generated_jobs += 1
 
-            version_id = version.get(
-                "versionId",
-            )
+            if max_jobs is not None and generated_jobs >= max_jobs:
+                return
 
-            if (
-                isinstance(version_id, bool)
-                or not isinstance(version_id, int)
-                or version_id <= 0
-            ):
-                continue
+    if matched_car_records == 0:
+        filters: list[str] = []
 
-            if version_id in seen_version_ids:
-                continue
+        if normalized_brand is not None:
+            filters.append(f"brand={normalized_brand!r}")
 
-            seen_version_ids.add(
-                version_id,
-            )
+        if normalized_model is not None:
+            filters.append(f"model={normalized_model!r}")
 
-            for (
-                city_id,
-                city_masking_name,
-            ) in cities:
-                yield CarWaleCityPriceJob(
-                    version_id=version_id,
-                    city_id=city_id,
-                    make_masking_name=(make_masking_name),
-                    model_masking_name=(model_masking_name),
-                    city_masking_name=(city_masking_name),
-                )
+        filter_text = f" for {', '.join(filters)}" if filters else ""
 
-                generated_jobs += 1
-
-                if max_jobs is not None and generated_jobs >= max_jobs:
-                    return
+        raise CarWaleCityPriceJobSourceError(
+            "No launched CarWale versions were found "
+            f"in MongoDB{filter_text}. "
+            "Run carwale-cars first."
+        )

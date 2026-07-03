@@ -432,7 +432,8 @@ async def _create_city_price_indexes(
                     ("versionId", ASCENDING),
                     ("cityId", ASCENDING),
                 ],
-                name="idx_version_city",
+                name="uniq_version_city",
+                unique=True,
             ),
             IndexModel(
                 [
@@ -461,16 +462,16 @@ async def _create_city_price_indexes(
             IndexModel(
                 [
                     ("versionId", ASCENDING),
-                    ("updatedAt", DESCENDING),
+                    ("scrapedAt", DESCENDING),
                 ],
-                name="idx_version_updated_at",
+                name="idx_version_scraped_at",
             ),
             IndexModel(
                 [
                     ("cityId", ASCENDING),
-                    ("updatedAt", DESCENDING),
+                    ("scrapedAt", DESCENDING),
                 ],
-                name="idx_city_updated_at",
+                name="idx_city_scraped_at",
             ),
         ]
     )

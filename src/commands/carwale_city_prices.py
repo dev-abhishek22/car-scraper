@@ -241,8 +241,6 @@ async def run_carwale_city_prices(
             )
         else:
             jobs = iter_carwale_city_price_jobs(
-                cars_directory=(active_cars_directory),
-                cities_file=active_cities_file,
                 selected_brand=active_brand,
                 selected_model=active_model,
                 selected_city=active_city,
@@ -292,10 +290,12 @@ async def run_carwale_city_prices(
 
             client_metrics = client.metrics_snapshot()
 
-        unresolved_failures = await (
-            carwale_city_price_failure_repository.count_unresolved(
-                run_id=run_id,
-                retryable_only=False,
+        unresolved_failures = (
+            await (
+                carwale_city_price_failure_repository.count_unresolved(
+                    run_id=run_id,
+                    retryable_only=False,
+                )
             )
         )
 
