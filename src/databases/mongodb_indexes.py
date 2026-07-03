@@ -28,6 +28,8 @@ CARDEKHO_MODELS_COLLECTION: Final[str] = "cardekho_models"
 
 CARWALE_CARS_COLLECTION: Final[str] = "carwale_cars"
 
+CARDEKHO_CARS_COLLECTION: Final[str] = "cardekho_cars"
+
 CARWALE_TRIM_SPECS_FEATURES_COLLECTION: Final[str] = "carwale_trim_specs_features"
 
 CARWALE_CITIES_COLLECTION: Final[str] = "carwale_cities"
@@ -510,6 +512,120 @@ async def _create_carwale_car_indexes(
     )
 
 
+async def _create_cardekho_car_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(CARDEKHO_CARS_COLLECTION)
+
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("id", ASCENDING),
+                ],
+                name="uniq_model_id",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("slug", ASCENDING),
+                ],
+                name="uniq_brand_model_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("carSlug", ASCENDING),
+                ],
+                name="uniq_car_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("brandId", ASCENDING),
+                    ("id", ASCENDING),
+                ],
+                name="idx_brand_model_id",
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("modelStatus", ASCENDING),
+                    ("modelName", ASCENDING),
+                    ("id", ASCENDING),
+                ],
+                name="idx_brand_status_model_name",
+            ),
+            IndexModel(
+                [
+                    ("variants.id", ASCENDING),
+                ],
+                name="idx_variant_id",
+            ),
+            IndexModel(
+                [
+                    ("variants.slug", ASCENDING),
+                ],
+                name="idx_variant_slug",
+            ),
+            IndexModel(
+                [
+                    ("compareWith.carSlug", ASCENDING),
+                ],
+                name="idx_compare_with_car_slug",
+            ),
+            IndexModel(
+                [
+                    ("similarCars.carSlug", ASCENDING),
+                ],
+                name="idx_similar_car_slug",
+            ),
+            IndexModel(
+                [
+                    (
+                        "oldGenerationComparison.carSlug",
+                        ASCENDING,
+                    ),
+                ],
+                name="idx_old_generation_car_slug",
+                partialFilterExpression={
+                    "oldGenerationComparison.carSlug": {
+                        "$type": "string",
+                    },
+                },
+            ),
+            IndexModel(
+                [
+                    ("sourceModelDocumentId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_model_document",
+            ),
+            IndexModel(
+                [
+                    ("sourceModelRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_model_run",
+            ),
+            IndexModel(
+                [
+                    ("lastRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_last_run_updated_at",
+            ),
+            IndexModel(
+                [
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_scraped_at",
+            ),
+        ]
+    )
+
+
 async def _create_carwale_trim_specs_features_indexes(
     connection: MongoConnection,
 ) -> list[str]:
@@ -714,10 +830,22 @@ async def _create_city_price_indexes(
             ),
             IndexModel(
                 [
-                    ("filters.brand", ASCENDING),
-                    ("filters.model", ASCENDING),
-                    ("filters.city", ASCENDING),
-                    ("startedAt", DESCENDING),
+                    (
+                        "filters.brand",
+                        ASCENDING,
+                    ),
+                    (
+                        "filters.model",
+                        ASCENDING,
+                    ),
+                    (
+                        "filters.city",
+                        ASCENDING,
+                    ),
+                    (
+                        "startedAt",
+                        DESCENDING,
+                    ),
                 ],
                 name="idx_filters_started_at",
             ),
@@ -744,7 +872,10 @@ async def _create_city_price_indexes(
                     ("runId", ASCENDING),
                     ("status", ASCENDING),
                     ("retryable", ASCENDING),
-                    ("lastFailedAt", ASCENDING),
+                    (
+                        "lastFailedAt",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_unresolved_failures",
             ),
@@ -760,9 +891,12 @@ async def _create_city_price_indexes(
                 [
                     ("status", ASCENDING),
                     ("retryable", ASCENDING),
-                    ("lastFailedAt", DESCENDING),
+                    (
+                        "lastFailedAt",
+                        DESCENDING,
+                    ),
                 ],
-                name="idx_status_retryable_failed_at",
+                name=("idx_status_retryable_failed_at"),
             ),
         ]
     )
@@ -803,6 +937,8 @@ async def ensure_mongodb_indexes(
 
     carwale_car_indexes = await _create_carwale_car_indexes(connection)
 
+    cardekho_car_indexes = await _create_cardekho_car_indexes(connection)
+
     carwale_trim_specs_features_indexes = (
         await _create_carwale_trim_specs_features_indexes(connection)
     )
@@ -819,13 +955,14 @@ async def ensure_mongodb_indexes(
         CARWALE_MODELS_COLLECTION: (carwale_model_indexes),
         CARDEKHO_MODELS_COLLECTION: (cardekho_model_indexes),
         CARWALE_CARS_COLLECTION: (carwale_car_indexes),
+        CARDEKHO_CARS_COLLECTION: (cardekho_car_indexes),
         CARWALE_TRIM_SPECS_FEATURES_COLLECTION: (carwale_trim_specs_features_indexes),
         CARWALE_CITIES_COLLECTION: (carwale_city_indexes),
         **city_price_indexes,
     }
 
     logger_service.info(
-        (f"MongoDB indexes initialized: collections={list(created_indexes)}"),
+        ("MongoDB indexes initialized: " f"collections={list(created_indexes)}"),
         context="MongoDBIndexes",
     )
 
