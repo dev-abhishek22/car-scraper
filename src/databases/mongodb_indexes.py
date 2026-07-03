@@ -20,6 +20,8 @@ SCRAPER_JOBS_COLLECTION: Final[str] = "scraper_jobs"
 
 CARWALE_BRANDS_COLLECTION: Final[str] = "carwale_brands"
 
+CARDEKHO_BRANDS_COLLECTION: Final[str] = "cardekho_brands"
+
 CARWALE_MODELS_COLLECTION: Final[str] = "carwale_models"
 
 CARWALE_CARS_COLLECTION: Final[str] = "carwale_cars"
@@ -118,6 +120,7 @@ async def _create_scraper_job_indexes(
                     ("jobType", ASCENDING),
                     ("priority", DESCENDING),
                     ("queuedAt", ASCENDING),
+                    ("_id", ASCENDING),
                 ],
                 name="idx_claim_pending_job_by_type",
             ),
@@ -193,6 +196,79 @@ async def _create_carwale_brand_indexes(
                     ("makeId", ASCENDING),
                 ],
                 name="idx_make_name_make_id",
+            ),
+            IndexModel(
+                [
+                    ("lastRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_last_run_updated_at",
+            ),
+            IndexModel(
+                [
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_scraped_at",
+            ),
+        ]
+    )
+
+
+async def _create_cardekho_brand_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(CARDEKHO_BRANDS_COLLECTION)
+
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("slug", ASCENDING),
+                ],
+                name="uniq_brand_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("id", ASCENDING),
+                ],
+                name="uniq_numeric_brand_id",
+                unique=True,
+                partialFilterExpression={
+                    "id": {
+                        "$type": "number",
+                    },
+                },
+            ),
+            IndexModel(
+                [
+                    ("modelRequestSlug", ASCENDING),
+                ],
+                name="idx_model_request_slug",
+            ),
+            IndexModel(
+                [
+                    ("brandStatus", ASCENDING),
+                    ("brandName", ASCENDING),
+                    ("slug", ASCENDING),
+                ],
+                name="idx_status_brand_name",
+            ),
+            IndexModel(
+                [
+                    ("brandStatus", ASCENDING),
+                    ("isPopular", DESCENDING),
+                    ("popularity", DESCENDING),
+                    ("brandName", ASCENDING),
+                ],
+                name="idx_status_popularity",
+            ),
+            IndexModel(
+                [
+                    ("hasOfferData", ASCENDING),
+                    ("totalOfferCount", DESCENDING),
+                ],
+                name="idx_offer_data_count",
             ),
             IndexModel(
                 [
@@ -640,6 +716,8 @@ async def ensure_mongodb_indexes(
 
     carwale_brand_indexes = await _create_carwale_brand_indexes(connection)
 
+    cardekho_brand_indexes = await _create_cardekho_brand_indexes(connection)
+
     carwale_model_indexes = await _create_carwale_model_indexes(connection)
 
     carwale_car_indexes = await _create_carwale_car_indexes(connection)
@@ -656,6 +734,7 @@ async def ensure_mongodb_indexes(
         SCRAPER_RUNS_COLLECTION: (scraper_run_indexes),
         SCRAPER_JOBS_COLLECTION: (scraper_job_indexes),
         CARWALE_BRANDS_COLLECTION: (carwale_brand_indexes),
+        CARDEKHO_BRANDS_COLLECTION: (cardekho_brand_indexes),
         CARWALE_MODELS_COLLECTION: (carwale_model_indexes),
         CARWALE_CARS_COLLECTION: (carwale_car_indexes),
         CARWALE_TRIM_SPECS_FEATURES_COLLECTION: (carwale_trim_specs_features_indexes),

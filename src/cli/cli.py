@@ -4,6 +4,9 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 
+from src.cli.cardekho.brand_cli import (
+    add_cardekho_brands_command,
+)
 from src.cli.carwale.brand_cli import (
     add_carwale_brands_command,
 )
@@ -76,6 +79,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_carwale_trim_specs_features_command(
+        subparsers=subparsers,
+    )
+
+    add_cardekho_brands_command(
         subparsers=subparsers,
     )
 
