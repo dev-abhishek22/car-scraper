@@ -55,6 +55,15 @@ CARWALE_MODEL_PAGE_DATA: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+CARWALE_TRIM_PAGE_DATA: Final[ApiEndpoint] = ApiEndpoint(
+    name="carwale_trim_page_data",
+    method="GET",
+    path="/api/trimpagedata",
+    default_headers={
+        "Accept": "*/*",
+    },
+)
+
 CARWALE_CITIES: Final[ApiEndpoint] = ApiEndpoint(
     name="carwale_cities",
     method="GET",
@@ -77,6 +86,7 @@ CARWALE_APIS: Final[dict[str, ApiEndpoint]] = {
     CARWALE_NEW_CARS.name: CARWALE_NEW_CARS,
     CARWALE_MAKE_PAGE_DATA.name: CARWALE_MAKE_PAGE_DATA,
     CARWALE_MODEL_PAGE_DATA.name: CARWALE_MODEL_PAGE_DATA,
+    CARWALE_TRIM_PAGE_DATA.name: CARWALE_TRIM_PAGE_DATA,
     CARWALE_CITIES.name: CARWALE_CITIES,
     CARWALE_PIC_PAGE_DATA.name: CARWALE_PIC_PAGE_DATA,
 }

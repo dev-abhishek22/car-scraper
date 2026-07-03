@@ -19,6 +19,9 @@ from src.cli.carwale.city_price_cli import (
 from src.cli.carwale.model_cli import (
     add_carwale_models_command,
 )
+from src.cli.carwale.trim_specs_features_cli import (
+    add_carwale_trim_specs_features_command,
+)
 from src.cli.cleanup_cli import (
     add_cleanup_command,
 )
@@ -69,6 +72,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_carwale_city_prices_command(
+        subparsers=subparsers,
+    )
+
+    add_carwale_trim_specs_features_command(
         subparsers=subparsers,
     )
 
