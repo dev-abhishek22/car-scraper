@@ -22,6 +22,9 @@ from src.cli.carwale.model_cli import (
 from src.cli.cleanup_cli import (
     add_cleanup_command,
 )
+from src.cli.mongodb_cli import (
+    add_mongodb_indexes_command,
+)
 
 CommandHandler = Callable[
     [argparse.Namespace],
@@ -42,6 +45,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_cleanup_command(
+        subparsers=subparsers,
+    )
+
+    add_mongodb_indexes_command(
         subparsers=subparsers,
     )
 

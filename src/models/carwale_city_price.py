@@ -55,7 +55,7 @@ class CarWaleCityPrice(BaseModel):
         """
         Permanent MongoDB document ID for one version-city combination.
         """
-        return f"v:{self.version_id}:" f"c:{self.city_id}"
+        return f"v:{self.version_id}:c:{self.city_id}"
 
     def to_mongo_document(self) -> dict[str, Any]:
         return self.model_dump(

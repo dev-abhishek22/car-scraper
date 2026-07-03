@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # MongoDB
     MONGO_URI: SecretStr | None = None
-    MONGO_DATABASE: str = "car_api_scraper"
+    MONGO_DATABASE: str = "car_api_scraper_new"
 
     MONGO_MIN_POOL_SIZE: int = 1
     MONGO_MAX_POOL_SIZE: int = 20

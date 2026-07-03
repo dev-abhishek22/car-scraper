@@ -165,7 +165,7 @@ def add_carwale_city_prices_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-city-prices",
-        help=("Fetch CarWale version prices " "for saved cities"),
+        help=("Fetch CarWale version prices for saved cities"),
         description=(
             "Read saved CarWale car and city files, "
             "generate version-city combinations, "
@@ -179,7 +179,7 @@ def add_carwale_city_prices_command(
         type=_non_empty_string,
         default=None,
         metavar="MAKE_MASKING_NAME",
-        help=("Scrape one saved CarWale brand, " "for example 'audi'."),
+        help=("Scrape one saved CarWale brand, for example 'audi'."),
     )
 
     parser.add_argument(
@@ -199,7 +199,7 @@ def add_carwale_city_prices_command(
         type=_non_empty_string,
         default=None,
         metavar="CITY_MASKING_NAME",
-        help=("Scrape one city only, " "for example 'mumbai'."),
+        help=("Scrape one city only, for example 'mumbai'."),
     )
 
     parser.add_argument(
@@ -234,7 +234,7 @@ def add_carwale_city_prices_command(
         ),
         default=5,
         metavar="COUNT",
-        help=("Number of concurrent HTTP workers. " "Allowed: 1-500. Default: 5"),
+        help=("Number of concurrent HTTP workers. Allowed: 1-500. Default: 5"),
     )
 
     parser.add_argument(
@@ -242,7 +242,7 @@ def add_carwale_city_prices_command(
         type=_positive_float,
         default=2.0,
         metavar="RPS",
-        help=("Maximum global request-start rate " "across all workers. Default: 2"),
+        help=("Maximum global request-start rate across all workers. Default: 2"),
     )
 
     parser.add_argument(
@@ -297,9 +297,7 @@ def add_carwale_city_prices_command(
         ),
         default=None,
         metavar="COUNT",
-        help=(
-            "Stop after generating this many " "version-city jobs. Useful for testing."
-        ),
+        help=("Stop after generating this many version-city jobs. Useful for testing."),
     )
 
     parser.add_argument(
@@ -316,7 +314,7 @@ def add_carwale_city_prices_command(
     parser.add_argument(
         "--failed-only",
         action="store_true",
-        help=("Retry only unresolved failures stored " "for --resume-run-id."),
+        help=("Retry only unresolved failures stored for --resume-run-id."),
     )
 
     parser.add_argument(

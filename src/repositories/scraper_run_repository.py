@@ -10,14 +10,15 @@ from src.databases.mongodb import (
     MongoConnection,
     mongo_connection,
 )
-from src.models.carwale_city_price_run import (
-    CarWaleCityPriceRun,
+from src.models.scraper_run import (
+    ScraperRun,
 )
 
-CARWALE_CITY_PRICE_RUNS_COLLECTION = "carwale_city_price_runs"
+SCRAPER_RUNS_COLLECTION = "scraper_runs"
 
-CarWaleCityPriceFinishedStatus = Literal[
+ScraperRunFinishedStatus = Literal[
     "completed",
+    "completed_with_failures",
     "interrupted",
     "failed",
     "cancelled",
@@ -33,14 +34,21 @@ PROGRESS_FIELD_NAMES = {
     "matched",
     "modified",
     "failureRecordsWritten",
+    "totalJobs",
+    "pendingJobs",
+    "runningJobs",
+    "completedJobs",
+    "failedJobs",
+    "skippedJobs",
+    "cancelledJobs",
 }
 
 
-class CarWaleCityPriceRunNotFoundError(LookupError):
-    """Raised when a city-price run cannot be found."""
+class ScraperRunNotFoundError(LookupError):
+    """Raised when a scraper run cannot be found."""
 
 
-class CarWaleCityPriceRunRepository:
+class ScraperRunRepository:
     def __init__(
         self,
         connection: MongoConnection = mongo_connection,
@@ -96,12 +104,14 @@ class CarWaleCityPriceRunRepository:
 
         for field_name, value in progress.items():
             if field_name not in PROGRESS_FIELD_NAMES:
-                raise ValueError(f"Unsupported run progress field: {field_name}")
+                raise ValueError(
+                    f"Unsupported scraper run progress field: {field_name}"
+                )
 
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ValueError(
-                    "Run progress values must be non-negative "
-                    "integers: "
+                    "Scraper run progress values must be "
+                    "non-negative integers: "
                     f"field={field_name}"
                 )
 
@@ -109,13 +119,22 @@ class CarWaleCityPriceRunRepository:
 
         return normalized_progress
 
+    @staticmethod
+    def _normalize_metadata(
+        metadata: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        if metadata is None:
+            return {}
+
+        return dict(metadata)
+
     async def create(
         self,
-        run: CarWaleCityPriceRun,
-    ) -> CarWaleCityPriceRun:
+        run: ScraperRun,
+    ) -> ScraperRun:
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         await collection.insert_one(run.to_mongo_document())
 
@@ -124,12 +143,12 @@ class CarWaleCityPriceRunRepository:
     async def get(
         self,
         run_id: str,
-    ) -> CarWaleCityPriceRun | None:
+    ) -> ScraperRun | None:
         normalized_run_id = self._normalize_run_id(run_id)
 
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         document = await collection.find_one(
             {
@@ -140,30 +159,78 @@ class CarWaleCityPriceRunRepository:
         if document is None:
             return None
 
-        return CarWaleCityPriceRun.model_validate(document)
+        return ScraperRun.model_validate(document)
 
     async def require(
         self,
         run_id: str,
-    ) -> CarWaleCityPriceRun:
+    ) -> ScraperRun:
         run = await self.get(run_id)
 
         if run is None:
-            raise CarWaleCityPriceRunNotFoundError(
-                f"CarWale city-price run was not found: {run_id}"
-            )
+            raise ScraperRunNotFoundError(f"Scraper run was not found: {run_id}")
 
         return run
 
-    async def mark_resumed(
+    async def mark_started(
         self,
         run_id: str,
-    ) -> CarWaleCityPriceRun:
+    ) -> ScraperRun:
         normalized_run_id = self._normalize_run_id(run_id)
 
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
+
+        current_time = datetime.now(timezone.utc)
+
+        document = await collection.find_one_and_update(
+            {
+                "_id": normalized_run_id,
+                "status": "pending",
+            },
+            {
+                "$set": {
+                    "status": "running",
+                    "startedAt": current_time,
+                    "updatedAt": current_time,
+                },
+                "$unset": {
+                    "completedAt": "",
+                    "stoppedAt": "",
+                    "stopReason": "",
+                    "stopHttpStatus": "",
+                    "errorType": "",
+                    "errorMessage": "",
+                },
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+
+        if document is None:
+            existing_run = await self.get(normalized_run_id)
+
+            if existing_run is None:
+                raise ScraperRunNotFoundError(
+                    f"Scraper run was not found: {normalized_run_id}"
+                )
+
+            raise ValueError(
+                "Scraper run cannot be started because "
+                f"its status is {existing_run.status!r}"
+            )
+
+        return ScraperRun.model_validate(document)
+
+    async def mark_resumed(
+        self,
+        run_id: str,
+    ) -> ScraperRun:
+        normalized_run_id = self._normalize_run_id(run_id)
+
+        await self._connection.connect()
+
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         current_time = datetime.now(timezone.utc)
 
@@ -174,6 +241,7 @@ class CarWaleCityPriceRunRepository:
                     "$in": [
                         "running",
                         "completed",
+                        "completed_with_failures",
                         "interrupted",
                         "failed",
                         "cancelled",
@@ -188,11 +256,11 @@ class CarWaleCityPriceRunRepository:
                     "completedAt": None,
                 },
                 "$unset": {
-                    "errorType": "",
-                    "errorMessage": "",
+                    "stoppedAt": "",
                     "stopReason": "",
                     "stopHttpStatus": "",
-                    "stoppedAt": "",
+                    "errorType": "",
+                    "errorMessage": "",
                 },
                 "$inc": {
                     "resumeCount": 1,
@@ -205,16 +273,16 @@ class CarWaleCityPriceRunRepository:
             existing_run = await self.get(normalized_run_id)
 
             if existing_run is None:
-                raise CarWaleCityPriceRunNotFoundError(
-                    f"CarWale city-price run was not found: {normalized_run_id}"
+                raise ScraperRunNotFoundError(
+                    f"Scraper run was not found: {normalized_run_id}"
                 )
 
             raise ValueError(
-                "CarWale city-price run cannot be resumed because "
+                "Scraper run cannot be resumed because "
                 f"its status is {existing_run.status!r}"
             )
 
-        return CarWaleCityPriceRun.model_validate(document)
+        return ScraperRun.model_validate(document)
 
     async def update_progress(
         self,
@@ -223,6 +291,7 @@ class CarWaleCityPriceRunRepository:
         progress: Mapping[str, int],
     ) -> None:
         normalized_run_id = self._normalize_run_id(run_id)
+
         normalized_progress = self._normalize_progress(progress)
 
         if not normalized_progress:
@@ -230,7 +299,7 @@ class CarWaleCityPriceRunRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         update_fields: dict[str, Any] = {
             **normalized_progress,
@@ -247,90 +316,135 @@ class CarWaleCityPriceRunRepository:
         )
 
         if result.matched_count == 0:
-            raise CarWaleCityPriceRunNotFoundError(
-                f"CarWale city-price run was not found: {normalized_run_id}"
+            raise ScraperRunNotFoundError(
+                f"Scraper run was not found: {normalized_run_id}"
             )
 
-    async def update_pause_settings(
+    async def increment_progress(
         self,
         run_id: str,
         *,
-        pause_every_requests: int,
-        pause_seconds: float,
-    ) -> CarWaleCityPriceRun:
+        increments: Mapping[str, int],
+    ) -> None:
         normalized_run_id = self._normalize_run_id(run_id)
 
-        if (
-            isinstance(pause_every_requests, bool)
-            or not isinstance(pause_every_requests, int)
-            or pause_every_requests < 0
-        ):
-            raise ValueError("pause_every_requests must be a non-negative integer")
+        normalized_increments = self._normalize_progress(increments)
 
-        if (
-            isinstance(pause_seconds, bool)
-            or not isinstance(pause_seconds, (int, float))
-            or pause_seconds < 0
-        ):
-            raise ValueError("pause_seconds must be a non-negative number")
-
-        pause_enabled = pause_every_requests > 0
-        duration_enabled = float(pause_seconds) > 0
-
-        if pause_enabled != duration_enabled:
-            raise ValueError(
-                "pause_every_requests and pause_seconds must "
-                "both be greater than zero or both be zero"
-            )
+        if not normalized_increments:
+            return
 
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
+
+        result = await collection.update_one(
+            {
+                "_id": normalized_run_id,
+            },
+            {
+                "$inc": normalized_increments,
+                "$set": {
+                    "updatedAt": datetime.now(timezone.utc),
+                },
+            },
+        )
+
+        if result.matched_count == 0:
+            raise ScraperRunNotFoundError(
+                f"Scraper run was not found: {normalized_run_id}"
+            )
+
+    async def update_metadata(
+        self,
+        run_id: str,
+        *,
+        metadata: Mapping[str, Any],
+        merge: bool = True,
+    ) -> ScraperRun:
+        normalized_run_id = self._normalize_run_id(run_id)
+
+        normalized_metadata = self._normalize_metadata(metadata)
+
+        await self._connection.connect()
+
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         current_time = datetime.now(timezone.utc)
+
+        if merge:
+            set_fields: dict[str, Any] = {
+                "updatedAt": current_time,
+            }
+
+            for key, value in normalized_metadata.items():
+                normalized_key = str(key).strip()
+
+                if not normalized_key:
+                    continue
+
+                set_fields[f"metadata.{normalized_key}"] = value
+
+        else:
+            set_fields = {
+                "metadata": normalized_metadata,
+                "updatedAt": current_time,
+            }
 
         document = await collection.find_one_and_update(
             {
                 "_id": normalized_run_id,
             },
             {
-                "$set": {
-                    "settings.pauseEveryRequests": (pause_every_requests),
-                    "settings.pauseSeconds": float(pause_seconds),
-                    "updatedAt": current_time,
-                }
+                "$set": set_fields,
             },
             return_document=ReturnDocument.AFTER,
         )
 
         if document is None:
-            raise CarWaleCityPriceRunNotFoundError(
-                f"CarWale city-price run was not found: {normalized_run_id}"
+            raise ScraperRunNotFoundError(
+                f"Scraper run was not found: {normalized_run_id}"
             )
 
-        return CarWaleCityPriceRun.model_validate(document)
+        return ScraperRun.model_validate(document)
 
     async def mark_completed(
         self,
         run_id: str,
         *,
-        progress: Mapping[str, int],
-    ) -> CarWaleCityPriceRun:
+        progress: Mapping[str, int] | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ScraperRun:
+        normalized_progress = self._normalize_progress(progress)
+
+        failed_jobs = normalized_progress.get("failedJobs")
+
+        failed = normalized_progress.get("failed")
+
+        has_failures = (failed_jobs is not None and failed_jobs > 0) or (
+            failed is not None and failed > 0
+        )
+
+        status: ScraperRunFinishedStatus = (
+            "completed_with_failures" if has_failures else "completed"
+        )
+
         return await self._mark_finished(
             run_id=run_id,
-            status="completed",
-            progress=progress,
+            status=status,
+            progress=normalized_progress,
+            metadata=metadata,
         )
 
     async def mark_interrupted(
         self,
         run_id: str,
         *,
-        progress: Mapping[str, int],
+        progress: Mapping[str, int] | None = None,
         error: BaseException | None = None,
         stop_reason: str | None = None,
         stop_http_status: int | None = None,
-    ) -> CarWaleCityPriceRun:
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ScraperRun:
         return await self._mark_finished(
             run_id=run_id,
             status="interrupted",
@@ -338,17 +452,19 @@ class CarWaleCityPriceRunRepository:
             error=error,
             stop_reason=stop_reason,
             stop_http_status=stop_http_status,
+            metadata=metadata,
         )
 
     async def mark_failed(
         self,
         run_id: str,
         *,
-        progress: Mapping[str, int],
         error: BaseException,
+        progress: Mapping[str, int] | None = None,
         stop_reason: str | None = None,
         stop_http_status: int | None = None,
-    ) -> CarWaleCityPriceRun:
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ScraperRun:
         return await self._mark_finished(
             run_id=run_id,
             status="failed",
@@ -356,40 +472,49 @@ class CarWaleCityPriceRunRepository:
             error=error,
             stop_reason=stop_reason,
             stop_http_status=stop_http_status,
+            metadata=metadata,
         )
 
     async def mark_cancelled(
         self,
         run_id: str,
         *,
-        progress: Mapping[str, int],
+        progress: Mapping[str, int] | None = None,
         stop_reason: str | None = None,
-    ) -> CarWaleCityPriceRun:
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ScraperRun:
         return await self._mark_finished(
             run_id=run_id,
             status="cancelled",
             progress=progress,
             stop_reason=stop_reason,
+            metadata=metadata,
         )
 
     async def _mark_finished(
         self,
         *,
         run_id: str,
-        status: CarWaleCityPriceFinishedStatus,
-        progress: Mapping[str, int],
+        status: ScraperRunFinishedStatus,
+        progress: Mapping[str, int] | None = None,
         error: BaseException | None = None,
         stop_reason: str | None = None,
         stop_http_status: int | None = None,
-    ) -> CarWaleCityPriceRun:
+        metadata: Mapping[str, Any] | None = None,
+    ) -> ScraperRun:
         normalized_run_id = self._normalize_run_id(run_id)
+
         normalized_progress = self._normalize_progress(progress)
+
         normalized_stop_reason = self._normalize_optional_text(stop_reason)
+
         normalized_stop_http_status = self._normalize_http_status(stop_http_status)
+
+        normalized_metadata = self._normalize_metadata(metadata)
 
         await self._connection.connect()
 
-        collection = self._connection.collection(CARWALE_CITY_PRICE_RUNS_COLLECTION)
+        collection = self._connection.collection(SCRAPER_RUNS_COLLECTION)
 
         current_time = datetime.now(timezone.utc)
 
@@ -401,11 +526,16 @@ class CarWaleCityPriceRunRepository:
 
         unset_fields: dict[str, str] = {}
 
-        if status == "completed":
+        if status in {
+            "completed",
+            "completed_with_failures",
+        }:
             update_fields["completedAt"] = current_time
+
             unset_fields["stoppedAt"] = ""
             unset_fields["stopReason"] = ""
             unset_fields["stopHttpStatus"] = ""
+
         else:
             update_fields["completedAt"] = None
             update_fields["stoppedAt"] = current_time
@@ -424,10 +554,20 @@ class CarWaleCityPriceRunRepository:
             update_fields["errorType"] = type(error).__name__
 
             error_message = str(error).strip()
+
             update_fields["errorMessage"] = error_message or type(error).__name__
+
         else:
             unset_fields["errorType"] = ""
             unset_fields["errorMessage"] = ""
+
+        for key, value in normalized_metadata.items():
+            normalized_key = str(key).strip()
+
+            if not normalized_key:
+                continue
+
+            update_fields[f"metadata.{normalized_key}"] = value
 
         update_document: dict[str, Any] = {
             "$set": update_fields,
@@ -445,11 +585,11 @@ class CarWaleCityPriceRunRepository:
         )
 
         if document is None:
-            raise CarWaleCityPriceRunNotFoundError(
-                f"CarWale city-price run was not found: {normalized_run_id}"
+            raise ScraperRunNotFoundError(
+                f"Scraper run was not found: {normalized_run_id}"
             )
 
-        return CarWaleCityPriceRun.model_validate(document)
+        return ScraperRun.model_validate(document)
 
 
-carwale_city_price_run_repository = CarWaleCityPriceRunRepository()
+scraper_run_repository = ScraperRunRepository()

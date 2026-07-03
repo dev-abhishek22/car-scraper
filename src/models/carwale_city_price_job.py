@@ -43,4 +43,4 @@ class CarWaleCityPriceJob(BaseModel):
         This same value is used as the MongoDB document _id
         for successful city-price records.
         """
-        return f"v:{self.version_id}:" f"c:{self.city_id}"
+        return f"v:{self.version_id}:c:{self.city_id}"

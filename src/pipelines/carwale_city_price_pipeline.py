@@ -483,10 +483,7 @@ class CarWaleCityPricePipeline:
 
                 if self._stats.completed > 0 and self._stats.completed % 10_000 == 0:
                     logger_service.debug(
-                        (
-                            "CarWale city-price worker active: "
-                            f"worker={worker_number}"
-                        ),
+                        (f"CarWale city-price worker active: worker={worker_number}"),
                         context="CarWaleCityPricePipeline",
                     )
 
@@ -790,7 +787,7 @@ class CarWaleCityPricePipeline:
                         failure_queue=failure_queue,
                         stop_event=stop_event,
                     ),
-                    name=("carwale-city-price-" f"worker-{worker_number}"),
+                    name=(f"carwale-city-price-worker-{worker_number}"),
                 )
 
             group.create_task(

@@ -1,70 +1,165 @@
 from __future__ import annotations
 
-import json
+import asyncio
 import re
-from concurrent.futures import (
-    Future,
-    ThreadPoolExecutor,
-    as_completed,
-)
-from dataclasses import dataclass
-from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
-from src.clients.client import ExternalClientError
-from src.external.executors.carwale.client_factory import (
-    create_carwale_client,
+from pymongo.errors import PyMongoError
+
+from src.clients.client import (
+    ExternalClientError,
+    ExternalResponseError,
 )
-from src.external.executors.carwale.model_page import (
-    scrape_carwale_model_page,
+from src.databases.mongodb import (
+    mongo_connection,
+)
+from src.external.executors.carwale.async_client_factory import (
+    create_carwale_async_client,
+)
+from src.external.executors.carwale.cars import (
+    CarWaleCarsExecutor,
 )
 from src.logger.logger import logger_service
-from src.storage.json_storage import JsonStorage
-from src.storage.scraper_status import ScrapeStatusStore
-
-DEFAULT_MODELS_DIRECTORY = Path("data/raw/carwale/models")
-
-DEFAULT_CARS_DIRECTORY = Path("data/raw/carwale/car")
-
-DEFAULT_STATUS_FILE = Path("data/raw/carwale/scraping/cars_status.json")
-
-DEFAULT_REQUEST_DIRECTORY = Path("data/raw/carwale/requests/cars")
-
-DEFAULT_ARCHIVE_DIRECTORY = Path("data/raw/carwale/archive/cars")
-
-STATUS_RESOURCE_NAME = "carwale_cars"
-
-MASKING_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-
-
-@dataclass(
-    frozen=True,
-    slots=True,
+from src.models.carwale_model import (
+    CarWaleModel,
 )
-class CarScrapingJob:
-    make: dict[str, Any]
-    model: dict[str, Any]
-    make_id: int | None
-    make_name: str
-    make_masking_name: str
-    model_id: int | None
-    model_name: str
-    model_masking_name: str
-    item_key: str
-    position: int
-    total_selected: int
+from src.models.scraper_job import (
+    ScraperJob,
+)
+from src.models.scraper_run import (
+    ScraperRun,
+)
+from src.repositories.carwale_brand_repository import (
+    carwale_brand_repository,
+)
+from src.repositories.carwale_car_repository import (
+    carwale_car_repository,
+)
+from src.repositories.carwale_model_repository import (
+    carwale_model_repository,
+)
+from src.repositories.scraper_job_repository import (
+    JobStatusCounts,
+    scraper_job_repository,
+)
+from src.repositories.scraper_run_repository import (
+    scraper_run_repository,
+)
 
-    def metadata(self) -> dict[str, Any]:
-        return {
-            "makeId": self.make_id,
-            "makeName": self.make_name,
-            "makeMaskingName": (self.make_masking_name),
-            "modelId": self.model_id,
-            "modelName": self.model_name,
-            "modelMaskingName": (self.model_masking_name),
-            "position": self.position,
-            "totalSelected": self.total_selected,
-        }
+COMMAND_NAME = "carwale-cars"
+SOURCE_NAME = "carwale"
+RESOURCE_NAME = "cars"
+JOB_TYPE = "fetch-car"
+
+HTTP_STATUS_PATTERN = re.compile(
+    r"(?:status|status_code|http_status)" r"\s*[=:]\s*(\d{3})",
+    re.IGNORECASE,
+)
+
+RETRYABLE_HTTP_STATUSES = {
+    401,
+    403,
+    408,
+    425,
+    429,
+    500,
+    502,
+    503,
+    504,
+}
+
+
+def _validate_positive_integer(
+    value: int,
+    *,
+    field_name: str,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{field_name} must be a positive integer")
+
+    return value
+
+
+def _validate_non_negative_integer(
+    value: int,
+    *,
+    field_name: str,
+) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field_name} must be a non-negative integer")
+
+    return value
+
+
+def _validate_workers(
+    workers: int,
+) -> int:
+    normalized_workers = _validate_positive_integer(
+        workers,
+        field_name="workers",
+    )
+
+    if normalized_workers > 1000:
+        raise ValueError("workers cannot exceed 1000")
+
+    return normalized_workers
+
+
+def _validate_requests_per_second(
+    requests_per_second: float,
+) -> float:
+    if (
+        isinstance(requests_per_second, bool)
+        or not isinstance(
+            requests_per_second,
+            (int, float),
+        )
+        or requests_per_second <= 0
+    ):
+        raise ValueError("requests_per_second must be greater than zero")
+
+    return float(requests_per_second)
+
+
+def _validate_pause_configuration(
+    *,
+    pause_every_requests: int,
+    pause_seconds: float,
+) -> tuple[int, float]:
+    if (
+        isinstance(pause_every_requests, bool)
+        or not isinstance(
+            pause_every_requests,
+            int,
+        )
+        or pause_every_requests < 0
+    ):
+        raise ValueError("pause_every_requests must be a non-negative integer")
+
+    if (
+        isinstance(pause_seconds, bool)
+        or not isinstance(
+            pause_seconds,
+            (int, float),
+        )
+        or pause_seconds < 0
+    ):
+        raise ValueError("pause_seconds must be a non-negative number")
+
+    normalized_pause_seconds = float(pause_seconds)
+
+    if (pause_every_requests > 0) != (normalized_pause_seconds > 0):
+        raise ValueError(
+            "pause_every_requests and pause_seconds "
+            "must both be greater than zero or both "
+            "be zero"
+        )
+
+    return (
+        pause_every_requests,
+        normalized_pause_seconds,
+    )
 
 
 def _normalize_optional_slug(
@@ -75,28 +170,10 @@ def _normalize_optional_slug(
     if value is None:
         return None
 
-    if not isinstance(value, str):
-        raise TypeError(f"{field_name} must be a string")
-
-    normalized_value = value.strip().lower()
-
-    if not normalized_value:
-        raise ValueError(f"{field_name} cannot be empty")
-
-    if not MASKING_NAME_PATTERN.fullmatch(normalized_value):
-        raise ValueError(
-            f"{field_name} contains invalid characters: {normalized_value!r}"
-        )
-
-    return normalized_value
-
-
-def _normalize_required_slug(
-    value: Any,
-    *,
-    field_name: str,
-) -> str:
-    if not isinstance(value, str):
+    if not isinstance(
+        value,
+        str,
+    ):
         raise ValueError(f"{field_name} must be a string")
 
     normalized_value = value.strip().lower()
@@ -104,530 +181,295 @@ def _normalize_required_slug(
     if not normalized_value:
         raise ValueError(f"{field_name} cannot be empty")
 
-    if not MASKING_NAME_PATTERN.fullmatch(normalized_value):
-        raise ValueError(
-            f"{field_name} contains invalid characters: {normalized_value!r}"
-        )
-
     return normalized_value
 
 
-def _read_model_file(
-    input_file: Path,
-) -> dict[str, Any]:
-    if not input_file.exists():
-        raise FileNotFoundError(f"CarWale model file was not found: {input_file}")
+def _normalize_optional_positive_integer(
+    value: int | None,
+    *,
+    field_name: str,
+) -> int | None:
+    if value is None:
+        return None
 
-    if not input_file.is_file():
-        raise ValueError(f"CarWale model path is not a file: {input_file}")
+    return _validate_positive_integer(
+        value,
+        field_name=field_name,
+    )
+
+
+def _normalize_optional_non_negative_integer(
+    value: int | None,
+    *,
+    field_name: str,
+) -> int | None:
+    if value is None:
+        return None
+
+    return _validate_non_negative_integer(
+        value,
+        field_name=field_name,
+    )
+
+
+def _extract_http_status(
+    error: BaseException,
+) -> int | None:
+    for attribute_name in (
+        "status_code",
+        "http_status",
+        "status",
+    ):
+        status_value = getattr(
+            error,
+            attribute_name,
+            None,
+        )
+
+        if (
+            isinstance(status_value, int)
+            and not isinstance(
+                status_value,
+                bool,
+            )
+            and 100 <= status_value <= 599
+        ):
+            return status_value
+
+    match = HTTP_STATUS_PATTERN.search(str(error))
+
+    if match is None:
+        return None
 
     try:
-        payload = json.loads(
-            input_file.read_text(
-                encoding="utf-8",
-            )
-        )
+        status_code = int(match.group(1))
+    except ValueError:
+        return None
 
-    except json.JSONDecodeError as error:
-        raise ValueError(
-            f"CarWale model file contains invalid JSON: {input_file}"
-        ) from error
+    if not 100 <= status_code <= 599:
+        return None
 
-    if not isinstance(payload, dict):
-        raise ValueError(f"CarWale model file must contain a JSON object: {input_file}")
-
-    return payload
+    return status_code
 
 
-def _discover_model_files(
-    models_dir: str | Path,
-) -> list[Path]:
-    input_directory = Path(models_dir)
-
-    if not input_directory.exists():
-        raise FileNotFoundError(
-            f"CarWale models directory was not found: {input_directory}"
-        )
-
-    if not input_directory.is_dir():
-        raise ValueError(f"CarWale models path is not a directory: {input_directory}")
-
-    model_files = sorted(
-        file_path for file_path in input_directory.glob("*.json") if file_path.is_file()
-    )
-
-    if not model_files:
-        raise ValueError(
-            "CarWale models directory does not "
-            f"contain any JSON files: "
-            f"{input_directory}"
-        )
-
-    return model_files
-
-
-def _extract_jobs(
-    *,
-    models_dir: str | Path,
-    selected_brand: str | None,
-    selected_model: str | None,
-) -> tuple[
-    list[
-        tuple[
-            dict[str, Any],
-            dict[str, Any],
-            int | None,
-            str,
-            str,
-            int | None,
-            str,
-            str,
-        ]
-    ],
-    list[dict[str, Any]],
-]:
-    model_files = _discover_model_files(models_dir)
-
-    raw_jobs: list[
-        tuple[
-            dict[str, Any],
-            dict[str, Any],
-            int | None,
-            str,
-            str,
-            int | None,
-            str,
-            str,
-        ]
-    ] = []
-
-    input_errors: list[dict[str, Any]] = []
-
-    seen_keys: set[str] = set()
-    matching_brand_found = False
-    matching_model_found = False
-
-    for input_file in model_files:
-        try:
-            payload = _read_model_file(input_file)
-
-            make_masking_name = _normalize_required_slug(
-                payload.get("maskingName"),
-                field_name=(f"{input_file}.maskingName"),
-            )
-
-            if selected_brand is not None and make_masking_name != selected_brand:
-                continue
-
-            matching_brand_found = True
-
-            make_id_value = payload.get("makeId")
-
-            make_id = (
-                make_id_value
-                if isinstance(
-                    make_id_value,
-                    int,
-                )
-                and not isinstance(
-                    make_id_value,
-                    bool,
-                )
-                else None
-            )
-
-            make_name_value = payload.get("makeName")
-
-            make_name = (
-                make_name_value.strip()
-                if isinstance(
-                    make_name_value,
-                    str,
-                )
-                else ""
-            )
-
-            models = payload.get("models")
-
-            if not isinstance(models, list):
-                raise ValueError(
-                    "CarWale model file does not "
-                    "contain a valid models list: "
-                    f"{input_file}"
-                )
-
-            make_data: dict[str, Any] = {
-                "makeId": payload.get("makeId"),
-                "makeName": payload.get("makeName"),
-                "maskingName": (make_masking_name),
-            }
-
-            for model_index, model in enumerate(models):
-                if not isinstance(model, dict):
-                    input_errors.append(
-                        {
-                            "file": str(input_file),
-                            "modelIndex": (model_index),
-                            "errorType": ("ValueError"),
-                            "errorMessage": ("Model entry is not a JSON object"),
-                        }
-                    )
-                    continue
-
-                try:
-                    model_masking_name = _normalize_required_slug(
-                        model.get("modelMaskingName"),
-                        field_name=("modelMaskingName"),
-                    )
-
-                except ValueError as error:
-                    input_errors.append(
-                        {
-                            "file": str(input_file),
-                            "modelIndex": (model_index),
-                            "errorType": (type(error).__name__),
-                            "errorMessage": str(error),
-                        }
-                    )
-                    continue
-
-                if selected_model is not None and model_masking_name != selected_model:
-                    continue
-
-                matching_model_found = True
-
-                item_key = f"{make_masking_name}/{model_masking_name}"
-
-                if item_key in seen_keys:
-                    logger_service.info(
-                        (f"Ignoring duplicate CarWale car job: key={item_key}"),
-                        context=("CarWaleCarsCommand"),
-                    )
-                    continue
-
-                seen_keys.add(item_key)
-
-                model_id_value = model.get("modelId")
-
-                model_id = (
-                    model_id_value
-                    if isinstance(
-                        model_id_value,
-                        int,
-                    )
-                    and not isinstance(
-                        model_id_value,
-                        bool,
-                    )
-                    else None
-                )
-
-                model_name_value = model.get("modelName")
-
-                model_name = (
-                    model_name_value.strip()
-                    if isinstance(
-                        model_name_value,
-                        str,
-                    )
-                    else ""
-                )
-
-                raw_jobs.append(
-                    (
-                        make_data,
-                        dict(model),
-                        make_id,
-                        make_name,
-                        make_masking_name,
-                        model_id,
-                        model_name,
-                        model_masking_name,
-                    )
-                )
-
-        except (
-            OSError,
-            ValueError,
-        ) as error:
-            input_errors.append(
-                {
-                    "file": str(input_file),
-                    "errorType": (error.__class__.__name__),
-                    "errorMessage": str(error),
-                }
-            )
-
-            logger_service.error(
-                (f"Ignoring invalid CarWale model input file: file={input_file}"),
-                exception=error,
-                context="CarWaleCarsCommand",
-            )
-
-    if selected_brand is not None and not matching_brand_found:
-        raise ValueError(
-            f"CarWale brand was not found in the models directory: {selected_brand!r}"
-        )
-
-    if selected_model is not None and not matching_model_found:
-        raise ValueError(
-            "CarWale model was not found for "
-            f"brand={selected_brand!r}: "
-            f"model={selected_model!r}"
-        )
-
-    return (
-        raw_jobs,
-        input_errors,
-    )
-
-
-def _build_jobs(
-    *,
-    models_dir: str | Path,
-    selected_brand: str | None,
-    selected_model: str | None,
-) -> tuple[
-    list[CarScrapingJob],
-    list[dict[str, Any]],
-]:
-    (
-        raw_jobs,
-        input_errors,
-    ) = _extract_jobs(
-        models_dir=models_dir,
-        selected_brand=selected_brand,
-        selected_model=selected_model,
-    )
-
-    total_selected = len(raw_jobs)
-
-    jobs: list[CarScrapingJob] = []
-
-    for position, raw_job in enumerate(
-        raw_jobs,
-        start=1,
-    ):
-        (
-            make,
-            model,
-            make_id,
-            make_name,
-            make_masking_name,
-            model_id,
-            model_name,
-            model_masking_name,
-        ) = raw_job
-
-        jobs.append(
-            CarScrapingJob(
-                make=make,
-                model=model,
-                make_id=make_id,
-                make_name=make_name,
-                make_masking_name=(make_masking_name),
-                model_id=model_id,
-                model_name=model_name,
-                model_masking_name=(model_masking_name),
-                item_key=(f"{make_masking_name}/{model_masking_name}"),
-                position=position,
-                total_selected=(total_selected),
-            )
-        )
-
-    return (
-        jobs,
-        input_errors,
-    )
-
-
-def _output_file_for_job(
-    *,
-    output_dir: str | Path,
-    job: CarScrapingJob,
-) -> Path:
-    return Path(output_dir) / job.make_masking_name / f"{job.model_masking_name}.json"
-
-
-def _existing_output_is_valid(
-    *,
-    output_file: Path,
-    job: CarScrapingJob,
+def _is_retryable_error(
+    error: BaseException,
 ) -> bool:
-    if not output_file.exists():
-        return False
+    http_status = _extract_http_status(error)
 
-    if not output_file.is_file():
-        return False
+    if http_status is not None:
+        return http_status in RETRYABLE_HTTP_STATUSES
 
-    try:
-        payload = json.loads(
-            output_file.read_text(
-                encoding="utf-8",
-            )
-        )
-
-    except (
-        OSError,
-        json.JSONDecodeError,
+    if isinstance(
+        error,
+        ExternalResponseError,
     ):
         return False
 
-    if not isinstance(payload, dict):
-        return False
-
-    if payload.get("makeMaskingName") != job.make_masking_name:
-        return False
-
-    if payload.get("modelMaskingName") != job.model_masking_name:
-        return False
-
-    data = payload.get("data")
-
-    if not isinstance(data, dict):
-        return False
-
-    if not isinstance(
-        data.get("modelDetails"),
-        dict,
-    ):
-        return False
-
-    optional_section_types = (
-        dict,
-        list,
-        type(None),
-    )
-
-    if not isinstance(
-        data.get("replacedModelDetails"),
-        optional_section_types,
-    ):
-        return False
-
-    if not isinstance(
-        data.get("similarCars"),
-        optional_section_types,
-    ):
-        return False
-
-    versions = data.get("versions")
-
-    if not isinstance(versions, list):
-        return False
-
-    for version in versions:
-        if not isinstance(version, dict):
-            return False
-
-        if "specsSummary" in version:
-            return False
-
-        if "featureSpecs" in version:
-            return False
-
-    return True
-
-
-def _select_failed_jobs(
-    *,
-    jobs: list[CarScrapingJob],
-    status_store: ScrapeStatusStore,
-) -> list[CarScrapingJob]:
-    failed_keys = status_store.get_failed_keys()
-
-    if not failed_keys:
-        return []
-
-    return [job for job in jobs if job.item_key in failed_keys]
-
-
-def _save_car_payload(
-    *,
-    job: CarScrapingJob,
-    payload: dict[str, Any],
-    output_dir: str | Path,
-    archive_dir: str | Path,
-) -> dict[str, str | None]:
-    files = JsonStorage.save(
-        directory=(Path(output_dir) / job.make_masking_name),
-        file_name=(job.model_masking_name),
-        data=payload,
-        create_archive=True,
-        archive_directory=(Path(archive_dir) / job.make_masking_name),
-    )
-
-    return {
-        "output_file": str(files["latest_file"]),
-        "archive_file": (
-            str(files["archive_file"]) if files["archive_file"] is not None else None
+    return isinstance(
+        error,
+        (
+            ExternalClientError,
+            PyMongoError,
         ),
+    )
+
+
+def _model_payload(
+    model: CarWaleModel,
+) -> dict[str, Any]:
+    return {
+        "makeId": model.make_id,
+        "makeName": model.make_name,
+        "makeMaskingName": (model.make_masking_name),
+        "modelId": model.model_id,
+        "modelName": model.model_name,
+        "modelMaskingName": (model.model_masking_name),
+        "lastRunId": model.last_run_id,
     }
 
 
-def _run_single_job(
+def _build_job(
     *,
-    client: Any,
-    job: CarScrapingJob,
-    city_id: int,
-    area_id: int,
-    platform_id: int,
+    run_id: str,
+    model: CarWaleModel,
+    city_id: int | None,
+    area_id: int | None,
+    platform_id: int | None,
     show_offer_upfront: bool,
-    show_request: bool,
-    save_request: bool,
-    request_dir: str | Path,
-) -> dict[str, Any]:
-    return scrape_carwale_model_page(
-        client=client,
-        make=job.make,
-        model=job.model,
-        city_id=city_id,
-        area_id=area_id,
-        platform_id=platform_id,
-        show_offer_upfront=(show_offer_upfront),
-        show_request=show_request,
-        save_request=save_request,
-        request_dir=request_dir,
+) -> ScraperJob:
+    payload = _model_payload(model)
+
+    payload["showOfferUpfront"] = show_offer_upfront
+
+    if city_id is not None:
+        payload["cityId"] = city_id
+
+    if area_id is not None:
+        payload["areaId"] = area_id
+
+    if platform_id is not None:
+        payload["platformId"] = platform_id
+
+    job_id = f"car:{model.make_id}:{model.model_id}"
+
+    item_key = f"{model.make_masking_name}:{model.model_masking_name}"
+
+    return ScraperJob.create(
+        run_id=run_id,
+        job_id=job_id,
+        source=SOURCE_NAME,
+        resource=RESOURCE_NAME,
+        job_type=JOB_TYPE,
+        item_key=item_key,
+        payload=payload,
+        metadata={
+            "sourceCollection": ("carwale_models"),
+            "targetCollection": ("carwale_cars"),
+            "sourceModelRunId": (model.last_run_id),
+        },
+        priority=100,
+        max_attempts=3,
     )
 
 
-def run_carwale_cars(
+def _build_progress(
+    *,
+    job_counts: JobStatusCounts,
+    total_cars: int,
+    matched: int,
+    modified: int,
+    inserted: int,
+) -> dict[str, int]:
+    return {
+        "produced": job_counts.total,
+        "skipped": job_counts.skipped,
+        "successful": job_counts.completed,
+        "failed": job_counts.failed,
+        "written": total_cars,
+        "inserted": inserted,
+        "matched": matched,
+        "modified": modified,
+        "failureRecordsWritten": (job_counts.failed),
+        "totalJobs": job_counts.total,
+        "pendingJobs": job_counts.pending,
+        "runningJobs": job_counts.running,
+        "completedJobs": (job_counts.completed),
+        "failedJobs": job_counts.failed,
+        "skippedJobs": job_counts.skipped,
+        "cancelledJobs": (job_counts.cancelled),
+    }
+
+
+async def _select_models(
+    *,
+    brand_filter: str | None,
+    model_filter: str | None,
+) -> list[CarWaleModel]:
+    if model_filter is not None and brand_filter is None:
+        raise ValueError("--model requires --brand")
+
+    if brand_filter is not None and model_filter is not None:
+        selected_model = await carwale_model_repository.get_by_masking_names(
+            make_masking_name=brand_filter,
+            model_masking_name=model_filter,
+        )
+
+        if selected_model is None:
+            raise LookupError(
+                "CarWale model was not found in "
+                "MongoDB: "
+                f"brand={brand_filter!r}, "
+                f"model={model_filter!r}. "
+                "Run carwale-models first."
+            )
+
+        return [selected_model]
+
+    if brand_filter is not None:
+        selected_brand = await carwale_brand_repository.get_by_masking_name(
+            brand_filter
+        )
+
+        if selected_brand is None:
+            raise LookupError(
+                "CarWale brand was not found in "
+                "MongoDB: "
+                f"brand={brand_filter!r}. "
+                "Run carwale-brands first."
+            )
+
+        models = await carwale_model_repository.list_all(
+            make_id=(selected_brand.make_id)
+        )
+
+        if not models:
+            raise LookupError(
+                "No CarWale models were found in "
+                "MongoDB for brand: "
+                f"{brand_filter!r}. "
+                "Run carwale-models first."
+            )
+
+        return models
+
+    models = await carwale_model_repository.list_all()
+
+    if not models:
+        raise LookupError(
+            "No CarWale models were found in MongoDB. Run carwale-models first."
+        )
+
+    return models
+
+
+async def _cancel_claimed_job_safely(
+    *,
+    run_id: str,
+    job_id: str,
+    reason: str,
+) -> None:
+    try:
+        current_job = await scraper_job_repository.get(
+            run_id=run_id,
+            job_id=job_id,
+        )
+
+        if current_job is not None and current_job.status in {
+            "pending",
+            "running",
+        }:
+            await scraper_job_repository.mark_cancelled(
+                run_id=run_id,
+                job_id=job_id,
+                reason=reason,
+            )
+
+    except Exception as tracking_error:
+        logger_service.error(
+            (
+                "Unable to cancel CarWale car job: "
+                f"run_id={run_id}, "
+                f"job_id={job_id}, "
+                f"error={type(tracking_error).__name__}: {tracking_error}"
+            ),
+            context="CarWaleCarsCommand",
+        )
+
+
+async def run_carwale_cars(
     *,
     brand: str | None = None,
     model: str | None = None,
-    models_dir: str | Path = (DEFAULT_MODELS_DIRECTORY),
-    output_dir: str | Path = (DEFAULT_CARS_DIRECTORY),
-    status_file: str | Path = (DEFAULT_STATUS_FILE),
-    request_dir: str | Path = (DEFAULT_REQUEST_DIRECTORY),
-    archive_dir: str | Path = (DEFAULT_ARCHIVE_DIRECTORY),
     workers: int = 3,
-    min_request_interval: float = 2.0,
-    city_id: int = 10,
-    area_id: int = 3657,
-    platform_id: int = 1,
+    requests_per_second: float = 3.0,
+    city_id: int | None = None,
+    area_id: int | None = None,
+    platform_id: int | None = None,
     show_offer_upfront: bool = False,
-    force: bool = False,
-    failed_only: bool = False,
-    show_request: bool = False,
-    save_request: bool = False,
+    pause_every_requests: int = 0,
+    pause_seconds: float = 0.0,
 ) -> dict[str, Any]:
-    """
-    Scrape CarWale model-page data for one or many
-    car models.
-
-    Worker threads only perform HTTP fetching and
-    response transformation.
-
-    The main thread performs:
-
-    - Status-store updates
-    - Existing-file checks
-    - Final JSON writes
-    - Summary collection
-
-    This keeps ScrapeStatusStore safe even though it
-    is not designed for concurrent writes.
-    """
     normalized_brand = _normalize_optional_slug(
         brand,
         field_name="brand",
@@ -639,371 +481,525 @@ def run_carwale_cars(
     )
 
     if normalized_model is not None and normalized_brand is None:
-        raise ValueError("--model requires --brand")
+        raise ValueError("model requires brand")
 
-    if failed_only and (normalized_brand is not None or normalized_model is not None):
-        raise ValueError("--failed-only cannot be combined with --brand or --model")
+    normalized_workers = _validate_workers(workers)
 
-    if (
-        not isinstance(workers, int)
-        or isinstance(workers, bool)
-        or workers < 1
-        or workers > 8
+    normalized_requests_per_second = _validate_requests_per_second(requests_per_second)
+
+    normalized_city_id = _normalize_optional_positive_integer(
+        city_id,
+        field_name="city_id",
+    )
+
+    normalized_area_id = _normalize_optional_non_negative_integer(
+        area_id,
+        field_name="area_id",
+    )
+
+    normalized_platform_id = _normalize_optional_positive_integer(
+        platform_id,
+        field_name="platform_id",
+    )
+
+    if not isinstance(
+        show_offer_upfront,
+        bool,
     ):
-        raise ValueError("workers must be an integer between 1 and 8")
-
-    if min_request_interval < 0:
-        raise ValueError("min_request_interval cannot be negative")
-
-    if city_id <= 0:
-        raise ValueError("city_id must be greater than zero")
-
-    if area_id < 0:
-        raise ValueError("area_id cannot be negative")
-
-    if platform_id <= 0:
-        raise ValueError("platform_id must be greater than zero")
+        raise ValueError("show_offer_upfront must be a boolean")
 
     (
-        all_jobs,
-        input_errors,
-    ) = _build_jobs(
-        models_dir=models_dir,
-        selected_brand=normalized_brand,
-        selected_model=normalized_model,
+        normalized_pause_every_requests,
+        normalized_pause_seconds,
+    ) = _validate_pause_configuration(
+        pause_every_requests=(pause_every_requests),
+        pause_seconds=pause_seconds,
     )
 
-    status_store = ScrapeStatusStore(
-        status_file=status_file,
-        resource_name=STATUS_RESOURCE_NAME,
-    )
-
-    mode = "all"
-
-    if failed_only:
-        mode = "failed-only"
-
-        selected_jobs = _select_failed_jobs(
-            jobs=all_jobs,
-            status_store=status_store,
-        )
-
-    elif normalized_model is not None:
+    if normalized_model is not None:
         mode = "single-model"
-        selected_jobs = all_jobs
-
     elif normalized_brand is not None:
         mode = "single-brand"
-        selected_jobs = all_jobs
-
     else:
-        selected_jobs = all_jobs
+        mode = "full"
 
-    summary: dict[str, Any] = {
-        "mode": mode,
-        "total_available_cars": len(all_jobs),
-        "selected_cars": len(selected_jobs),
-        "successful_cars": 0,
-        "failed_cars": 0,
-        "skipped_cars": 0,
-        "total_versions": 0,
-        "workers": workers,
-        "min_request_interval": (min_request_interval),
-        "input_errors": input_errors,
-        "failures": [],
+    run_settings: dict[str, Any] = {
+        "workers": normalized_workers,
+        "requestsPerSecond": normalized_requests_per_second,
+        "showOfferUpfront": show_offer_upfront,
+        "pauseEveryRequests": normalized_pause_every_requests,
+        "pauseSeconds": normalized_pause_seconds,
     }
 
-    status_store.start_run(
+    if normalized_city_id is not None:
+        run_settings["cityId"] = normalized_city_id
+
+    if normalized_area_id is not None:
+        run_settings["areaId"] = normalized_area_id
+
+    if normalized_platform_id is not None:
+        run_settings["platformId"] = normalized_platform_id
+
+    run = ScraperRun.create(
+        source=SOURCE_NAME,
+        resource=RESOURCE_NAME,
+        command=COMMAND_NAME,
         mode=mode,
-        selected_items=len(selected_jobs),
-        total_available_items=len(all_jobs),
-        metadata={
-            "modelsDirectory": str(Path(models_dir)),
-            "outputDirectory": str(Path(output_dir)),
-            "requestDirectory": (str(Path(request_dir)) if save_request else None),
-            "archiveDirectory": str(Path(archive_dir)),
+        filters={
             "brand": normalized_brand,
             "model": normalized_model,
-            "workers": workers,
-            "minimumRequestInterval": (min_request_interval),
-            "cityId": city_id,
-            "areaId": area_id,
-            "platformId": platform_id,
-            "showOfferUpfront": (show_offer_upfront),
-            "force": force,
-            "failedOnly": failed_only,
-            "inputErrors": input_errors,
+        },
+        settings=run_settings,
+        metadata={
+            "storage": "mongodb",
+            "sourceCollection": ("carwale_models"),
+            "targetCollection": ("carwale_cars"),
         },
     )
 
-    logger_service.info(
-        (
-            "Starting CarWale cars scraping: "
-            f"mode={mode}, "
-            f"available={len(all_jobs)}, "
-            f"selected={len(selected_jobs)}, "
-            f"workers={workers}, "
-            "minimum_request_interval="
-            f"{min_request_interval:.2f}s"
-        ),
-        context="CarWaleCarsCommand",
-    )
+    run_id = run.run_id
+    run_created = False
 
-    if not selected_jobs:
-        completed_run = status_store.complete_run(
-            metadata={
-                "summary": summary,
-            }
+    aggregate_lock = asyncio.Lock()
+
+    aggregate: dict[str, int] = {
+        "totalCars": 0,
+        "totalVersions": 0,
+        "matched": 0,
+        "modified": 0,
+        "inserted": 0,
+    }
+
+    client_metrics: dict[str, Any] = {}
+
+    async def get_aggregate_snapshot() -> dict[str, int]:
+        async with aggregate_lock:
+            return dict(aggregate)
+
+    async def refresh_run_progress() -> None:
+        job_counts = await scraper_job_repository.count_by_status(run_id=run_id)
+
+        aggregate_snapshot = await get_aggregate_snapshot()
+
+        progress = _build_progress(
+            job_counts=job_counts,
+            total_cars=(aggregate_snapshot["totalCars"]),
+            matched=(aggregate_snapshot["matched"]),
+            modified=(aggregate_snapshot["modified"]),
+            inserted=(aggregate_snapshot["inserted"]),
         )
 
-        return {
-            "command": "carwale-cars",
-            **summary,
-            "status_file": str(Path(status_file)),
-            "completed_run": completed_run,
-        }
-
-    pending_jobs: list[CarScrapingJob] = []
-
-    for job in selected_jobs:
-        metadata = job.metadata()
-
-        status_store.mark_started(
-            item_key=job.item_key,
-            metadata=metadata,
+        await scraper_run_repository.update_progress(
+            run_id,
+            progress=progress,
         )
 
-        output_file = _output_file_for_job(
-            output_dir=output_dir,
-            job=job,
+    try:
+        await mongo_connection.connect()
+
+        await scraper_run_repository.create(run)
+
+        run_created = True
+
+        selected_models = await _select_models(
+            brand_filter=(normalized_brand),
+            model_filter=(normalized_model),
         )
 
-        should_skip_existing = (
-            not force
-            and not failed_only
-            and _existing_output_is_valid(
-                output_file=output_file,
-                job=job,
+        jobs = [
+            _build_job(
+                run_id=run_id,
+                model=selected_model,
+                city_id=normalized_city_id,
+                area_id=normalized_area_id,
+                platform_id=normalized_platform_id,
+                show_offer_upfront=show_offer_upfront,
             )
+            for selected_model in selected_models
+        ]
+
+        create_result = await scraper_job_repository.create_many(jobs)
+
+        await scraper_run_repository.mark_started(run_id)
+
+        active_workers = min(
+            normalized_workers,
+            len(selected_models),
         )
 
-        if should_skip_existing:
-            summary["skipped_cars"] += 1
+        optional_request_context = []
 
-            status_store.mark_skipped(
-                item_key=job.item_key,
-                metadata=metadata,
-                result={
-                    "outputFile": str(output_file),
-                },
-                reason=("Valid car file already exists"),
-            )
+        if normalized_city_id is not None:
+            optional_request_context.append(f"city_id={normalized_city_id}")
 
-            logger_service.info(
-                (
-                    "Skipping existing CarWale "
-                    "car file: "
-                    f"key={job.item_key}, "
-                    f"file={output_file}"
-                ),
-                context=("CarWaleCarsCommand"),
-            )
+        if normalized_area_id is not None:
+            optional_request_context.append(f"area_id={normalized_area_id}")
 
-            continue
+        if normalized_platform_id is not None:
+            optional_request_context.append(f"platform_id={normalized_platform_id}")
 
-        pending_jobs.append(job)
+        optional_request_context_text = (
+            f", {', '.join(optional_request_context)}"
+            if optional_request_context
+            else ""
+        )
 
-    if pending_jobs:
-        with create_carwale_client(
-            workers=workers,
-            min_request_interval=(min_request_interval),
+        logger_service.info(
+            (
+                "Starting CarWale cars scraping: "
+                f"run_id={run_id}, "
+                f"mode={mode}, "
+                "selected_models="
+                f"{len(selected_models)}, "
+                f"workers={active_workers}, "
+                "requests_per_second="
+                f"{normalized_requests_per_second}"
+                f"{optional_request_context_text}"
+            ),
+            context="CarWaleCarsCommand",
+        )
+
+        async with create_carwale_async_client(
+            concurrency=active_workers,
+            requests_per_second=(normalized_requests_per_second),
+            pause_every_requests=(normalized_pause_every_requests),
+            pause_seconds=(normalized_pause_seconds),
         ) as client:
-            with ThreadPoolExecutor(
-                max_workers=workers,
-                thread_name_prefix=("carwale-car"),
-            ) as executor:
-                future_to_job: dict[
-                    Future[dict[str, Any]],
-                    CarScrapingJob,
-                ] = {}
+            executor = CarWaleCarsExecutor(client=client)
 
-                for job in pending_jobs:
-                    future = executor.submit(
-                        _run_single_job,
-                        client=client,
-                        job=job,
-                        city_id=city_id,
-                        area_id=area_id,
-                        platform_id=platform_id,
-                        show_offer_upfront=(show_offer_upfront),
-                        show_request=(show_request),
-                        save_request=(save_request),
-                        request_dir=request_dir,
+            async def worker(
+                worker_number: int,
+            ) -> None:
+                worker_id = f"carwale-cars-worker-{worker_number}"
+
+                while True:
+                    claimed_job = await scraper_job_repository.claim_next(
+                        run_id=run_id,
+                        worker_id=worker_id,
+                        resource=RESOURCE_NAME,
+                        job_type=JOB_TYPE,
                     )
 
-                    future_to_job[future] = job
+                    if claimed_job is None:
+                        return
 
-                for future in as_completed(future_to_job):
-                    job = future_to_job[future]
+                    job_id = claimed_job.job_id
+                    payload = claimed_job.payload
 
-                    metadata = job.metadata()
+                    make_id: Any = None
+                    model_id: Any = None
+                    make_masking_name: Any = None
+                    model_masking_name: Any = None
 
                     try:
-                        result = future.result()
-
-                        if result.get("status") != "success":
-                            raise ValueError(
-                                "Model-page executor "
-                                "returned an "
-                                "unsupported status: "
-                                f"{result.get('status')!r}"
-                            )
-
-                        payload = result.get("payload")
-
                         if not isinstance(
                             payload,
-                            dict,
+                            Mapping,
                         ):
-                            raise ValueError(
-                                "Model-page executor did not return a valid payload"
-                            )
+                            raise ValueError("Car job payload must be an object")
 
-                        saved_files = _save_car_payload(
-                            job=job,
-                            payload=payload,
-                            output_dir=(output_dir),
-                            archive_dir=(archive_dir),
+                        make_id = payload.get("makeId")
+                        model_id = payload.get("modelId")
+                        make_masking_name = payload.get("makeMaskingName")
+                        model_masking_name = payload.get("modelMaskingName")
+                        source_model_run_id = payload.get("lastRunId")
+
+                        car_data = await executor.execute(
+                            model=payload,
+                            city_id=normalized_city_id,
+                            area_id=normalized_area_id,
+                            platform_id=normalized_platform_id,
+                            show_offer_upfront=show_offer_upfront,
                         )
 
-                        total_versions = result.get(
-                            "total_versions",
-                            0,
+                        upsert_result = await carwale_car_repository.upsert_one(
+                            model=payload,
+                            car_data=car_data,
+                            run_id=run_id,
+                            city_id=normalized_city_id,
+                            area_id=normalized_area_id,
+                            platform_id=normalized_platform_id,
+                            show_offer_upfront=show_offer_upfront,
+                            source_model_run_id=(
+                                source_model_run_id
+                                if isinstance(
+                                    source_model_run_id,
+                                    str,
+                                )
+                                else None
+                            ),
                         )
 
-                        if not isinstance(
-                            total_versions,
-                            int,
-                        ):
-                            total_versions = 0
-
-                        summary["successful_cars"] += 1
-
-                        summary["total_versions"] += total_versions
-
-                        status_store.mark_success(
-                            item_key=(job.item_key),
-                            metadata=metadata,
+                        await scraper_job_repository.mark_completed(
+                            run_id=run_id,
+                            job_id=job_id,
+                            worker_id=worker_id,
                             result={
-                                "totalVersions": (total_versions),
-                                "outputFile": (saved_files["output_file"]),
-                                "archiveFile": (saved_files["archive_file"]),
-                                "requestFile": (result.get("request_file")),
-                                "scrapedAt": (result.get("scraped_at")),
+                                "documentId": (upsert_result.car.document_id),
+                                "makeId": make_id,
+                                "modelId": model_id,
+                                "makeMaskingName": (make_masking_name),
+                                "modelMaskingName": (model_masking_name),
+                                "totalVersions": (upsert_result.total_versions),
+                                "matched": (upsert_result.matched),
+                                "modified": (upsert_result.modified),
+                                "inserted": (upsert_result.inserted),
                             },
                         )
 
+                        async with aggregate_lock:
+                            aggregate["totalCars"] += 1
+                            aggregate["totalVersions"] += upsert_result.total_versions
+                            aggregate["matched"] += upsert_result.matched
+                            aggregate["modified"] += upsert_result.modified
+                            aggregate["inserted"] += upsert_result.inserted
+
+                        await refresh_run_progress()
+
                         logger_service.info(
                             (
-                                "CarWale car saved: "
-                                f"key={job.item_key}, "
-                                "total_versions="
-                                f"{total_versions}, "
-                                "file="
-                                f"{saved_files['output_file']}"
+                                "CarWale car completed: "
+                                f"run_id={run_id}, "
+                                "car="
+                                f"{make_masking_name}:"
+                                f"{model_masking_name}, "
+                                "versions="
+                                f"{upsert_result.total_versions}, "
+                                "inserted="
+                                f"{upsert_result.inserted}, "
+                                "modified="
+                                f"{upsert_result.modified}"
                             ),
-                            context=("CarWaleCarsCommand"),
+                            context="CarWaleCarsCommand",
                         )
 
-                    except (
-                        ExternalClientError,
-                        OSError,
-                        ValueError,
-                    ) as error:
-                        summary["failed_cars"] += 1
-
-                        failure = {
-                            **metadata,
-                            "itemKey": (job.item_key),
-                            "errorType": (type(error).__name__),
-                            "errorMessage": str(error),
-                        }
-
-                        summary["failures"].append(failure)
-
-                        status_store.mark_failed(
-                            item_key=(job.item_key),
-                            metadata=metadata,
-                            error_type=(type(error).__name__),
-                            error_message=str(error),
+                    except asyncio.CancelledError:
+                        await _cancel_claimed_job_safely(
+                            run_id=run_id,
+                            job_id=job_id,
+                            reason=("Cars command interrupted"),
                         )
 
-                        logger_service.error(
-                            (f"CarWale car scraping failed: key={job.item_key}"),
-                            exception=error,
-                            context=("CarWaleCarsCommand"),
-                        )
+                        raise
 
                     except Exception as error:
-                        summary["failed_cars"] += 1
+                        retryable_error = _is_retryable_error(error)
+                        http_status = _extract_http_status(error)
 
-                        failure = {
-                            **metadata,
-                            "itemKey": (job.item_key),
-                            "errorType": (type(error).__name__),
-                            "errorMessage": str(error),
-                        }
-
-                        summary["failures"].append(failure)
-
-                        status_store.mark_failed(
-                            item_key=(job.item_key),
-                            metadata=metadata,
-                            error_type=(type(error).__name__),
-                            error_message=str(error),
+                        await scraper_job_repository.mark_failed(
+                            run_id=run_id,
+                            job_id=job_id,
+                            error=error,
+                            retryable=(retryable_error),
+                            http_status=(http_status),
+                            worker_id=worker_id,
                         )
+
+                        requeued_jobs = 0
+
+                        if retryable_error:
+                            requeued_jobs = await scraper_job_repository.requeue_failed(
+                                run_id=run_id,
+                            )
+
+                        await refresh_run_progress()
+
+                        if requeued_jobs > 0:
+                            logger_service.info(
+                                (
+                                    "CarWale car retry scheduled: "
+                                    f"run_id={run_id}, "
+                                    f"make_id={make_id}, "
+                                    f"model_id={model_id}, "
+                                    "car="
+                                    f"{make_masking_name}:"
+                                    f"{model_masking_name}, "
+                                    "error="
+                                    f"{type(error).__name__}: {error}"
+                                ),
+                                context="CarWaleCarsCommand",
+                            )
+
+                            continue
 
                         logger_service.error(
                             (
-                                "Unexpected error "
-                                "while processing "
-                                "CarWale car: "
-                                f"key={job.item_key}"
+                                "CarWale car failed: "
+                                f"run_id={run_id}, "
+                                f"make_id={make_id}, "
+                                f"model_id={model_id}, "
+                                "car="
+                                f"{make_masking_name}:"
+                                f"{model_masking_name}, "
+                                "error="
+                                f"{type(error).__name__}: {error}"
                             ),
-                            exception=error,
-                            context=("CarWaleCarsCommand"),
+                            context="CarWaleCarsCommand",
                         )
 
-    completed_run = status_store.complete_run(
-        metadata={
-            "summary": summary,
+            worker_tasks = [
+                asyncio.create_task(
+                    worker(worker_number),
+                    name=(f"carwale-cars-worker-{worker_number}"),
+                )
+                for worker_number in range(
+                    1,
+                    active_workers + 1,
+                )
+            ]
+
+            await asyncio.gather(*worker_tasks)
+
+            client_metrics = client.metrics_snapshot()
+
+        job_counts = await scraper_job_repository.count_by_status(run_id=run_id)
+
+        aggregate_snapshot = await get_aggregate_snapshot()
+
+        progress = _build_progress(
+            job_counts=job_counts,
+            total_cars=(aggregate_snapshot["totalCars"]),
+            matched=(aggregate_snapshot["matched"]),
+            modified=(aggregate_snapshot["modified"]),
+            inserted=(aggregate_snapshot["inserted"]),
+        )
+
+        finished_run = await scraper_run_repository.mark_completed(
+            run_id,
+            progress=progress,
+        )
+
+        logger_service.info(
+            (
+                "CarWale cars scraping completed: "
+                f"run_id={run_id}, "
+                f"status={finished_run.status}, "
+                "selected_models="
+                f"{len(selected_models)}, "
+                "successful="
+                f"{job_counts.completed}, "
+                f"failed={job_counts.failed}, "
+                "total_versions="
+                f"{aggregate_snapshot['totalVersions']}"
+            ),
+            context="CarWaleCarsCommand",
+        )
+
+        result: dict[str, Any] = {
+            "command": COMMAND_NAME,
+            "runId": run_id,
+            "status": finished_run.status,
+            "mode": mode,
+            "brand": normalized_brand,
+            "model": normalized_model,
+            "selectedModels": (len(selected_models)),
+            "workers": active_workers,
+            "requestsPerSecond": (normalized_requests_per_second),
+            "showOfferUpfront": (show_offer_upfront),
+            "pauseEveryRequests": (normalized_pause_every_requests),
+            "pauseSeconds": (normalized_pause_seconds),
+            "jobsCreated": (create_result.inserted),
+            "jobsExisting": (create_result.existing),
+            "successfulCars": (job_counts.completed),
+            "failedCars": (job_counts.failed),
+            "skippedCars": (job_counts.skipped),
+            "cancelledCars": (job_counts.cancelled),
+            "totalCars": (aggregate_snapshot["totalCars"]),
+            "totalVersions": (aggregate_snapshot["totalVersions"]),
+            "matched": (aggregate_snapshot["matched"]),
+            "modified": (aggregate_snapshot["modified"]),
+            "inserted": (aggregate_snapshot["inserted"]),
+            "sourceCollection": ("carwale_models"),
+            "collection": ("carwale_cars"),
+            "httpMetrics": client_metrics,
+            "jobs": job_counts.to_dict(),
         }
-    )
 
-    logger_service.info(
-        (
-            "CarWale cars scraping completed: "
-            f"selected="
-            f"{summary['selected_cars']}, "
-            f"successful="
-            f"{summary['successful_cars']}, "
-            f"failed="
-            f"{summary['failed_cars']}, "
-            f"skipped="
-            f"{summary['skipped_cars']}, "
-            f"total_versions="
-            f"{summary['total_versions']}"
-        ),
-        context="CarWaleCarsCommand",
-    )
+        if normalized_city_id is not None:
+            result["cityId"] = normalized_city_id
 
-    return {
-        "command": "carwale-cars",
-        **summary,
-        "models_directory": str(Path(models_dir)),
-        "output_directory": str(Path(output_dir)),
-        "status_file": str(Path(status_file)),
-        "request_directory": (str(Path(request_dir)) if save_request else None),
-        "archive_directory": str(Path(archive_dir)),
-        "completed_run": completed_run,
-    }
+        if normalized_area_id is not None:
+            result["areaId"] = normalized_area_id
+
+        if normalized_platform_id is not None:
+            result["platformId"] = normalized_platform_id
+
+        return result
+
+    except (
+        KeyboardInterrupt,
+        asyncio.CancelledError,
+    ) as error:
+        if run_created:
+            try:
+                job_counts = await scraper_job_repository.count_by_status(run_id=run_id)
+
+                aggregate_snapshot = await get_aggregate_snapshot()
+
+                progress = _build_progress(
+                    job_counts=job_counts,
+                    total_cars=(aggregate_snapshot["totalCars"]),
+                    matched=(aggregate_snapshot["matched"]),
+                    modified=(aggregate_snapshot["modified"]),
+                    inserted=(aggregate_snapshot["inserted"]),
+                )
+
+                await scraper_run_repository.mark_interrupted(
+                    run_id,
+                    progress=progress,
+                    error=error,
+                    stop_reason=("CarWale cars command interrupted"),
+                )
+
+            except Exception as tracking_error:
+                logger_service.error(
+                    (
+                        "Unable to mark CarWale cars run as interrupted: "
+                        f"{type(tracking_error).__name__}: {tracking_error}"
+                    ),
+                    context="CarWaleCarsCommand",
+                )
+
+        raise
+
+    except Exception as error:
+        if run_created:
+            try:
+                job_counts = await scraper_job_repository.count_by_status(run_id=run_id)
+
+                aggregate_snapshot = await get_aggregate_snapshot()
+
+                progress = _build_progress(
+                    job_counts=job_counts,
+                    total_cars=(aggregate_snapshot["totalCars"]),
+                    matched=(aggregate_snapshot["matched"]),
+                    modified=(aggregate_snapshot["modified"]),
+                    inserted=(aggregate_snapshot["inserted"]),
+                )
+
+                await scraper_run_repository.mark_failed(
+                    run_id,
+                    progress=progress,
+                    error=error,
+                    stop_reason=("CarWale cars scraping failed"),
+                    stop_http_status=(_extract_http_status(error)),
+                )
+
+            except Exception as tracking_error:
+                logger_service.error(
+                    (
+                        "Unable to mark CarWale cars run as failed: "
+                        f"{type(tracking_error).__name__}: {tracking_error}"
+                    ),
+                    context="CarWaleCarsCommand",
+                )
+
+        logger_service.error(
+            ("CarWale cars scraping failed: " f"{type(error).__name__}: {error}"),
+            context="CarWaleCarsCommand",
+        )
+
+        raise
+
+    finally:
+        await mongo_connection.close()

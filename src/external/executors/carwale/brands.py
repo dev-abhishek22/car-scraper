@@ -1,66 +1,117 @@
 from __future__ import annotations
 
-from pathlib import Path
+from collections.abc import Mapping
 from typing import Any
 
+from src.clients.async_client import (
+    AsyncExternalHttpClient,
+)
 from src.clients.client import (
-    ExternalHttpClient,
     ExternalResponseError,
 )
 from src.external.constants.carwale import (
     CARWALE_NEW_CARS,
 )
-from src.external.executors.base import BaseApiExecutor
 
 
-class CarWaleBrandsExecutor(BaseApiExecutor):
+class CarWaleBrandsExecutor:
+    """
+    Fetch and validate the CarWale brand list.
+
+    This executor performs no file writes, archive creation,
+    status tracking, or MongoDB operations.
+    """
+
     def __init__(
         self,
-        client: ExternalHttpClient,
+        client: AsyncExternalHttpClient,
     ) -> None:
-        self.client = client
+        self._client = client
 
-    def execute(
+    @staticmethod
+    def _validate_positive_integer(
+        value: int,
+        *,
+        field_name: str,
+    ) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise ValueError(f"{field_name} must be a positive integer")
+
+        return value
+
+    @staticmethod
+    def _parse_make_list(
+        response: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        raw_make_list = response.get("makeList")
+
+        if not isinstance(
+            raw_make_list,
+            list,
+        ):
+            raise ExternalResponseError(
+                "CarWale response does not contain a valid makeList array"
+            )
+
+        make_list: list[dict[str, Any]] = []
+
+        for index, raw_brand in enumerate(raw_make_list):
+            if not isinstance(
+                raw_brand,
+                Mapping,
+            ):
+                raise ExternalResponseError(
+                    "CarWale makeList contains an invalid "
+                    f"brand at index {index}. "
+                    "Expected an object"
+                )
+
+            make_list.append(dict(raw_brand))
+
+        if not make_list:
+            raise ExternalResponseError("CarWale makeList is empty")
+
+        return make_list
+
+    async def execute(
         self,
         *,
         page_id: int,
         platform_id: int = 1,
-        show_request: bool = False,
-        request_log_file: str | Path | None = None,
-        include_sensitive_request_data: bool = False,
-    ) -> list[Any]:
-        if page_id < 1:
-            raise ValueError("page_id must be greater than zero")
-
-        if platform_id < 1:
-            raise ValueError("platform_id must be greater than zero")
-
-        params = {
-            **CARWALE_NEW_CARS.default_params,
-            "pageId": page_id,
-            "platformId": platform_id,
-        }
-
-        if CARWALE_NEW_CARS.method != "GET":
-            raise RuntimeError("Unexpected method configured for CarWale brands API")
-
-        response = self.client.get_json(
-            endpoint=CARWALE_NEW_CARS.path,
-            params=params,
-            headers=CARWALE_NEW_CARS.default_headers,
-            show_request=show_request,
-            request_log_file=request_log_file,
-            include_sensitive_request_data=(include_sensitive_request_data),
+    ) -> list[dict[str, Any]]:
+        normalized_page_id = self._validate_positive_integer(
+            page_id,
+            field_name="page_id",
         )
 
-        if not isinstance(response, dict):
-            raise ExternalResponseError("Expected CarWale response to be a JSON object")
+        normalized_platform_id = self._validate_positive_integer(
+            platform_id,
+            field_name="platform_id",
+        )
 
-        make_list = response.get("makeList")
+        endpoint = CARWALE_NEW_CARS
 
-        if not isinstance(make_list, list):
-            raise ExternalResponseError(
-                "CarWale response does not contain a valid 'makeList' array"
+        if endpoint.method != "GET":
+            raise RuntimeError(
+                "Unexpected HTTP method configured for the CarWale brands API"
             )
 
-        return make_list
+        response_data = await self._client.get_json(
+            endpoint=endpoint.path,
+            params={
+                **endpoint.default_params,
+                "pageId": normalized_page_id,
+                "platformId": normalized_platform_id,
+            },
+            headers=endpoint.default_headers,
+        )
+
+        if not isinstance(
+            response_data,
+            Mapping,
+        ):
+            raise ExternalResponseError(
+                "CarWale brands API returned an invalid response. Expected an object"
+            )
+
+        return self._parse_make_list(response_data)

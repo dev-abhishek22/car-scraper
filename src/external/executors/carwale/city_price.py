@@ -41,7 +41,7 @@ class CarWaleCityPriceExecutor:
 
         if not isinstance(raw_version_details, Mapping):
             raise ExternalResponseError(
-                "CarWale PIC-page response does not contain " "valid versionDetails"
+                "CarWale PIC-page response does not contain valid versionDetails"
             )
 
         version_details = dict(raw_version_details)
@@ -69,8 +69,7 @@ class CarWaleCityPriceExecutor:
 
         if not isinstance(raw_price_breakup, list):
             raise ExternalResponseError(
-                "CarWale PIC-page response does not contain "
-                "a valid priceBreakup array"
+                "CarWale PIC-page response does not contain a valid priceBreakup array"
             )
 
         price_breakup: list[dict[str, Any]] = []
@@ -78,7 +77,7 @@ class CarWaleCityPriceExecutor:
         for index, price_item in enumerate(raw_price_breakup):
             if not isinstance(price_item, Mapping):
                 raise ExternalResponseError(
-                    "CarWale priceBreakup item must be an object: " f"index={index}"
+                    f"CarWale priceBreakup item must be an object: index={index}"
                 )
 
             price_breakup.append(dict(price_item))
@@ -93,7 +92,7 @@ class CarWaleCityPriceExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured for " "CarWale PIC-page API"
+                "Unexpected HTTP method configured for CarWale PIC-page API"
             )
 
         response_data = await self._client.get_json(
@@ -113,8 +112,7 @@ class CarWaleCityPriceExecutor:
 
         if not isinstance(response_data, Mapping):
             raise ExternalResponseError(
-                "CarWale PIC-page API returned an invalid response. "
-                "Expected an object"
+                "CarWale PIC-page API returned an invalid response. Expected an object"
             )
 
         version_details = self._parse_version_details(

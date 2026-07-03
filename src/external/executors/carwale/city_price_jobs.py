@@ -134,7 +134,7 @@ def load_carwale_cities(
 
         if isinstance(city_id, bool) or not isinstance(city_id, int) or city_id <= 0:
             logger_service.warning(
-                ("Skipping CarWale city with invalid CityId: " f"index={index}"),
+                (f"Skipping CarWale city with invalid CityId: index={index}"),
                 context="CarWaleCityPriceJobs",
             )
             continue
@@ -187,12 +187,12 @@ def iter_carwale_city_price_jobs(
 
     if not cars_path.exists():
         raise CarWaleCityPriceJobSourceError(
-            ("CarWale cars directory does not exist: " f"{cars_path}")
+            (f"CarWale cars directory does not exist: {cars_path}")
         )
 
     if not cars_path.is_dir():
         raise CarWaleCityPriceJobSourceError(
-            ("CarWale cars path is not a directory: " f"{cars_path}")
+            (f"CarWale cars path is not a directory: {cars_path}")
         )
 
     if max_jobs is not None and max_jobs < 1:
@@ -227,7 +227,7 @@ def iter_carwale_city_price_jobs(
 
         if not isinstance(payload, Mapping):
             logger_service.warning(
-                ("Skipping invalid CarWale car file: " f"file={car_file}"),
+                (f"Skipping invalid CarWale car file: file={car_file}"),
                 context="CarWaleCityPriceJobs",
             )
             continue

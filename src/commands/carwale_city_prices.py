@@ -92,7 +92,7 @@ async def run_carwale_city_prices(
         pause_every_requests is None or pause_seconds is None
     ):
         raise ValueError(
-            "--pause-every-requests and --pause-seconds " "must be provided together"
+            "--pause-every-requests and --pause-seconds must be provided together"
         )
 
     if pause_every_requests is not None and (
@@ -292,12 +292,10 @@ async def run_carwale_city_prices(
 
             client_metrics = client.metrics_snapshot()
 
-        unresolved_failures = (
-            await (
-                carwale_city_price_failure_repository.count_unresolved(
-                    run_id=run_id,
-                    retryable_only=False,
-                )
+        unresolved_failures = await (
+            carwale_city_price_failure_repository.count_unresolved(
+                run_id=run_id,
+                retryable_only=False,
             )
         )
 

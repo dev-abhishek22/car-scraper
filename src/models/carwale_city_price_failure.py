@@ -127,7 +127,7 @@ class CarWaleCityPriceFailure(BaseModel):
         if not normalized_job_id:
             raise ValueError("job_id cannot be empty")
 
-        return f"{normalized_run_id}:" f"{normalized_job_id}"
+        return f"{normalized_run_id}:{normalized_job_id}"
 
     @classmethod
     def create(

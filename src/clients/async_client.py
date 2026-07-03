@@ -622,7 +622,7 @@ class AsyncExternalHttpClient:
                     status_code=status_code,
                     safe_url=safe_url,
                 ),
-                name=("external-access-denied-cooldown-" f"{cooldown_number}"),
+                name=(f"external-access-denied-cooldown-{cooldown_number}"),
             )
             self._access_denied_cooldown_task = cooldown_task
             self._rate_condition.notify_all()
