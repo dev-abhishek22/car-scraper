@@ -6,8 +6,10 @@ from src.external.constants.base import ApiEndpoint
 
 CARDEKHO_BASE_URL: Final[str] = "https://www.cardekho.com"
 
+CARDEKHO_STATIC_BASE_URL: Final[str] = "https://staticcont.cardekho.com"
+
 CARDEKHO_DEFAULT_HEADERS: Final[dict[str, str]] = {
-    "Accept": "application/json, text/plain, */*",
+    "Accept": ("application/json, text/plain, */*"),
     "Source": "WEB",
 }
 
@@ -19,7 +21,7 @@ CARDEKHO_NEW_CARS: Final[ApiEndpoint] = ApiEndpoint(
         "url": "/newcars",
     },
     default_headers={
-        "Referer": "https://www.cardekho.com/newcars",
+        "Referer": ("https://www.cardekho.com/newcars"),
     },
 )
 
@@ -42,8 +44,28 @@ CARDEKHO_MODEL_OVERVIEW: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+CARDEKHO_CITIES_BUNDLE_PATH: Final[str] = (
+    "/pwa/js/bundle/" "cities.7731e9424bd84181d23f.cjs"
+)
+
+CARDEKHO_CITIES_BUNDLE_URL: Final[str] = (
+    f"{CARDEKHO_STATIC_BASE_URL}" f"{CARDEKHO_CITIES_BUNDLE_PATH}"
+)
+
+CARDEKHO_CITIES_BUNDLE: Final[ApiEndpoint] = ApiEndpoint(
+    name="cardekho_cities_bundle",
+    method="GET",
+    path=CARDEKHO_CITIES_BUNDLE_URL,
+    default_headers={
+        "Accept": ("application/javascript, " "text/javascript, " "text/plain, */*"),
+        "Referer": ("https://www.cardekho.com/"),
+    },
+    expected_response="text",
+)
+
 CARDEKHO_APIS: Final[dict[str, ApiEndpoint]] = {
-    CARDEKHO_NEW_CARS.name: CARDEKHO_NEW_CARS,
-    CARDEKHO_BRAND_MODELS.name: CARDEKHO_BRAND_MODELS,
-    CARDEKHO_MODEL_OVERVIEW.name: CARDEKHO_MODEL_OVERVIEW,
+    CARDEKHO_NEW_CARS.name: (CARDEKHO_NEW_CARS),
+    CARDEKHO_BRAND_MODELS.name: (CARDEKHO_BRAND_MODELS),
+    CARDEKHO_MODEL_OVERVIEW.name: (CARDEKHO_MODEL_OVERVIEW),
+    CARDEKHO_CITIES_BUNDLE.name: (CARDEKHO_CITIES_BUNDLE),
 }

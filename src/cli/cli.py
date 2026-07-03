@@ -10,6 +10,9 @@ from src.cli.cardekho.brand_cli import (
 from src.cli.cardekho.car_cli import (
     add_cardekho_cars_command,
 )
+from src.cli.cardekho.cities_cli import (
+    add_cardekho_cities_command,
+)
 from src.cli.cardekho.model_cli import (
     add_cardekho_models_command,
 )
@@ -97,6 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_cardekho_cars_command(
+        subparsers=subparsers,
+    )
+
+    add_cardekho_cities_command(
         subparsers=subparsers,
     )
 

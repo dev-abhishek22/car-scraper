@@ -34,6 +34,8 @@ CARWALE_TRIM_SPECS_FEATURES_COLLECTION: Final[str] = "carwale_trim_specs_feature
 
 CARWALE_CITIES_COLLECTION: Final[str] = "carwale_cities"
 
+CARDEKHO_CITIES_COLLECTION: Final[str] = "cardekho_cities"
+
 CARWALE_CITY_PRICES_COLLECTION: Final[str] = "carwale_city_prices"
 
 CARWALE_CITY_PRICE_RUNS_COLLECTION: Final[str] = "carwale_city_price_runs"
@@ -455,7 +457,10 @@ async def _create_carwale_car_indexes(
             ),
             IndexModel(
                 [
-                    ("data.versions.versionId", ASCENDING),
+                    (
+                        "data.versions.versionId",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_version_id",
             ),
@@ -497,8 +502,14 @@ async def _create_carwale_car_indexes(
             ),
             IndexModel(
                 [
-                    ("requestContext.cityId", ASCENDING),
-                    ("requestContext.areaId", ASCENDING),
+                    (
+                        "requestContext.cityId",
+                        ASCENDING,
+                    ),
+                    (
+                        "requestContext.areaId",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_request_city_area",
             ),
@@ -571,13 +582,19 @@ async def _create_cardekho_car_indexes(
             ),
             IndexModel(
                 [
-                    ("compareWith.carSlug", ASCENDING),
+                    (
+                        "compareWith.carSlug",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_compare_with_car_slug",
             ),
             IndexModel(
                 [
-                    ("similarCars.carSlug", ASCENDING),
+                    (
+                        "similarCars.carSlug",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_similar_car_slug",
             ),
@@ -590,14 +607,17 @@ async def _create_cardekho_car_indexes(
                 ],
                 name="idx_old_generation_car_slug",
                 partialFilterExpression={
-                    "oldGenerationComparison.carSlug": {
+                    ("oldGenerationComparison." "carSlug"): {
                         "$type": "string",
                     },
                 },
             ),
             IndexModel(
                 [
-                    ("sourceModelDocumentId", ASCENDING),
+                    (
+                        "sourceModelDocumentId",
+                        ASCENDING,
+                    ),
                     ("updatedAt", DESCENDING),
                 ],
                 name="idx_source_model_document",
@@ -651,12 +671,21 @@ async def _create_carwale_trim_specs_features_indexes(
             ),
             IndexModel(
                 [
-                    ("makeMaskingName", ASCENDING),
-                    ("modelMaskingName", ASCENDING),
-                    ("trimMaskingName", ASCENDING),
+                    (
+                        "makeMaskingName",
+                        ASCENDING,
+                    ),
+                    (
+                        "modelMaskingName",
+                        ASCENDING,
+                    ),
+                    (
+                        "trimMaskingName",
+                        ASCENDING,
+                    ),
                     ("versionId", ASCENDING),
                 ],
-                name="idx_make_model_trim_slug_version",
+                name=("idx_make_model_trim_slug_version"),
             ),
             IndexModel(
                 [
@@ -667,10 +696,13 @@ async def _create_carwale_trim_specs_features_indexes(
             ),
             IndexModel(
                 [
-                    ("sourceCarDocumentId", ASCENDING),
+                    (
+                        "sourceCarDocumentId",
+                        ASCENDING,
+                    ),
                     ("versionId", ASCENDING),
                 ],
-                name="idx_source_car_document_version",
+                name=("idx_source_car_document_version"),
             ),
             IndexModel(
                 [
@@ -712,7 +744,10 @@ async def _create_carwale_city_indexes(
             ),
             IndexModel(
                 [
-                    ("cityMaskingName", ASCENDING),
+                    (
+                        "cityMaskingName",
+                        ASCENDING,
+                    ),
                 ],
                 name="idx_city_masking_name",
             ),
@@ -737,6 +772,80 @@ async def _create_carwale_city_indexes(
                     ("cityName", ASCENDING),
                 ],
                 name="idx_deleted_city_name",
+            ),
+            IndexModel(
+                [
+                    ("lastRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_last_run_updated_at",
+            ),
+            IndexModel(
+                [
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_scraped_at",
+            ),
+        ]
+    )
+
+
+async def _create_cardekho_city_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(CARDEKHO_CITIES_COLLECTION)
+
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("cityId", ASCENDING),
+                ],
+                name="uniq_city_id",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("cityName", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_city_name_city_id",
+            ),
+            IndexModel(
+                [
+                    ("displayName", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_display_name_city_id",
+            ),
+            IndexModel(
+                [
+                    ("aliases", ASCENDING),
+                ],
+                name="idx_aliases",
+            ),
+            IndexModel(
+                [
+                    ("isPopular", DESCENDING),
+                    ("cityName", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_popular_city_name",
+            ),
+            IndexModel(
+                [
+                    ("isPrime", DESCENDING),
+                    ("cityName", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_prime_city_name",
+            ),
+            IndexModel(
+                [
+                    ("regions.regionId", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_region_id_city_id",
             ),
             IndexModel(
                 [
@@ -945,6 +1054,8 @@ async def ensure_mongodb_indexes(
 
     carwale_city_indexes = await _create_carwale_city_indexes(connection)
 
+    cardekho_city_indexes = await _create_cardekho_city_indexes(connection)
+
     city_price_indexes = await _create_city_price_indexes(connection)
 
     created_indexes = {
@@ -958,6 +1069,7 @@ async def ensure_mongodb_indexes(
         CARDEKHO_CARS_COLLECTION: (cardekho_car_indexes),
         CARWALE_TRIM_SPECS_FEATURES_COLLECTION: (carwale_trim_specs_features_indexes),
         CARWALE_CITIES_COLLECTION: (carwale_city_indexes),
+        CARDEKHO_CITIES_COLLECTION: (cardekho_city_indexes),
         **city_price_indexes,
     }
 
