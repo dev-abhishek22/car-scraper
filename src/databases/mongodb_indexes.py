@@ -24,6 +24,8 @@ CARDEKHO_BRANDS_COLLECTION: Final[str] = "cardekho_brands"
 
 CARWALE_MODELS_COLLECTION: Final[str] = "carwale_models"
 
+CARDEKHO_MODELS_COLLECTION: Final[str] = "cardekho_models"
+
 CARWALE_CARS_COLLECTION: Final[str] = "carwale_cars"
 
 CARWALE_TRIM_SPECS_FEATURES_COLLECTION: Final[str] = "carwale_trim_specs_features"
@@ -338,6 +340,83 @@ async def _create_carwale_model_indexes(
                     ("updatedAt", DESCENDING),
                 ],
                 name="idx_source_brand_run",
+            ),
+            IndexModel(
+                [
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_scraped_at",
+            ),
+        ]
+    )
+
+
+async def _create_cardekho_model_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(CARDEKHO_MODELS_COLLECTION)
+
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("id", ASCENDING),
+                ],
+                name="uniq_model_id",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("slug", ASCENDING),
+                ],
+                name="uniq_brand_model_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("brandId", ASCENDING),
+                    ("id", ASCENDING),
+                ],
+                name="idx_brand_model_id",
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("modelStatus", ASCENDING),
+                    ("modelName", ASCENDING),
+                    ("id", ASCENDING),
+                ],
+                name="idx_brand_status_model_name",
+            ),
+            IndexModel(
+                [
+                    ("modelStatus", ASCENDING),
+                    ("expectedLaunchDate", ASCENDING),
+                    ("brandName", ASCENDING),
+                ],
+                name="idx_status_launch_date",
+            ),
+            IndexModel(
+                [
+                    ("sourceBrandDocumentId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_brand_document",
+            ),
+            IndexModel(
+                [
+                    ("sourceBrandRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_brand_run",
+            ),
+            IndexModel(
+                [
+                    ("lastRunId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_last_run_updated_at",
             ),
             IndexModel(
                 [
@@ -720,6 +799,8 @@ async def ensure_mongodb_indexes(
 
     carwale_model_indexes = await _create_carwale_model_indexes(connection)
 
+    cardekho_model_indexes = await _create_cardekho_model_indexes(connection)
+
     carwale_car_indexes = await _create_carwale_car_indexes(connection)
 
     carwale_trim_specs_features_indexes = (
@@ -736,6 +817,7 @@ async def ensure_mongodb_indexes(
         CARWALE_BRANDS_COLLECTION: (carwale_brand_indexes),
         CARDEKHO_BRANDS_COLLECTION: (cardekho_brand_indexes),
         CARWALE_MODELS_COLLECTION: (carwale_model_indexes),
+        CARDEKHO_MODELS_COLLECTION: (cardekho_model_indexes),
         CARWALE_CARS_COLLECTION: (carwale_car_indexes),
         CARWALE_TRIM_SPECS_FEATURES_COLLECTION: (carwale_trim_specs_features_indexes),
         CARWALE_CITIES_COLLECTION: (carwale_city_indexes),

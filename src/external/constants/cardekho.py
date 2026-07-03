@@ -23,6 +23,17 @@ CARDEKHO_NEW_CARS: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+CARDEKHO_BRAND_MODELS: Final[ApiEndpoint] = ApiEndpoint(
+    name="cardekho_brand_models",
+    method="GET",
+    path="/api/v1/brand/models",
+    default_params={
+        "withUpcoming": "true",
+        "otherinfo": "all",
+    },
+)
+
 CARDEKHO_APIS: Final[dict[str, ApiEndpoint]] = {
     CARDEKHO_NEW_CARS.name: CARDEKHO_NEW_CARS,
+    CARDEKHO_BRAND_MODELS.name: CARDEKHO_BRAND_MODELS,
 }

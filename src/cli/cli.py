@@ -22,6 +22,9 @@ from src.cli.carwale.city_price_cli import (
 from src.cli.carwale.model_cli import (
     add_carwale_models_command,
 )
+from src.cli.cardekho.model_cli import (
+    add_cardekho_models_command,
+)
 from src.cli.carwale.trim_specs_features_cli import (
     add_carwale_trim_specs_features_command,
 )
@@ -63,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_carwale_models_command(
+        subparsers=subparsers,
+    )
+
+    add_cardekho_models_command(
         subparsers=subparsers,
     )
 
