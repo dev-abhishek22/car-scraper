@@ -107,7 +107,7 @@ def _validate_requests_per_second(
         )
         or requests_per_second <= 0
     ):
-        raise ValueError("requests_per_second must be greater " "than zero")
+        raise ValueError("requests_per_second must be greater than zero")
 
     return float(requests_per_second)
 
@@ -125,7 +125,7 @@ def _validate_pause_configuration(
         )
         or pause_every_requests < 0
     ):
-        raise ValueError("pause_every_requests must be a " "non-negative integer")
+        raise ValueError("pause_every_requests must be a non-negative integer")
 
     if (
         isinstance(pause_seconds, bool)
@@ -138,7 +138,7 @@ def _validate_pause_configuration(
         )
         or pause_seconds < 0
     ):
-        raise ValueError("pause_seconds must be a non-negative " "number")
+        raise ValueError("pause_seconds must be a non-negative number")
 
     normalized_pause_seconds = float(pause_seconds)
 
@@ -398,7 +398,7 @@ async def _select_models(
 
     if not models:
         raise LookupError(
-            "No CarDekho models were found in " "MongoDB. Run cardekho-models first."
+            "No CarDekho models were found in MongoDB. Run cardekho-models first."
         )
 
     return models
@@ -463,7 +463,7 @@ async def _mark_claimed_job_failed(
 
     if current_job is None:
         raise LookupError(
-            "CarDekho car job was not found: " f"run_id={run_id}, job_id={job_id}"
+            f"CarDekho car job was not found: run_id={run_id}, job_id={job_id}"
         )
 
     if current_job.status not in {
@@ -669,7 +669,7 @@ async def run_cardekho_cars(
             async def worker(
                 worker_number: int,
             ) -> None:
-                worker_id = "cardekho-cars-worker-" f"{worker_number}"
+                worker_id = f"cardekho-cars-worker-{worker_number}"
 
                 while True:
                     claimed_job = await scraper_job_repository.claim_next(
@@ -695,7 +695,7 @@ async def run_cardekho_cars(
                             payload,
                             Mapping,
                         ):
-                            raise ValueError("Car job payload must " "be an object")
+                            raise ValueError("Car job payload must be an object")
 
                         model_id = payload.get("id")
                         brand_slug = payload.get("brandSlug")
@@ -728,12 +728,12 @@ async def run_cardekho_cars(
                         async with aggregate_lock:
                             aggregate["totalCars"] += 1
                             aggregate["totalVariants"] += upsert_result.total_variants
-                            aggregate[
-                                "totalComparisons"
-                            ] += upsert_result.total_comparisons
-                            aggregate[
-                                "totalSimilarCars"
-                            ] += upsert_result.total_similar_cars
+                            aggregate["totalComparisons"] += (
+                                upsert_result.total_comparisons
+                            )
+                            aggregate["totalSimilarCars"] += (
+                                upsert_result.total_similar_cars
+                            )
                             aggregate["oldGenerationComparisons"] += int(
                                 has_old_generation
                             )
@@ -802,7 +802,7 @@ async def run_cardekho_cars(
                         await _cancel_claimed_job_safely(
                             run_id=run_id,
                             job_id=job_id,
-                            reason=("CarDekho cars command " "interrupted"),
+                            reason=("CarDekho cars command interrupted"),
                         )
 
                         raise
@@ -893,7 +893,7 @@ async def run_cardekho_cars(
             worker_tasks = [
                 asyncio.create_task(
                     worker(worker_number),
-                    name=("cardekho-cars-worker-" f"{worker_number}"),
+                    name=(f"cardekho-cars-worker-{worker_number}"),
                 )
                 for worker_number in range(
                     1,
@@ -987,7 +987,7 @@ async def run_cardekho_cars(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=("CarDekho cars command " "interrupted"),
+                    stop_reason=("CarDekho cars command interrupted"),
                     metadata=_build_totals_metadata(aggregate_snapshot),
                 )
 
@@ -1034,7 +1034,7 @@ async def run_cardekho_cars(
                 )
 
         logger_service.error(
-            ("CarDekho cars scraping failed: " f"{type(error).__name__}: " f"{error}"),
+            (f"CarDekho cars scraping failed: {type(error).__name__}: {error}"),
             context="CarDekhoCarsCommand",
         )
 

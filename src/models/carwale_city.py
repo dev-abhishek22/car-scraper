@@ -242,7 +242,7 @@ class CarWaleCity(BaseModel):
 
         if not CITY_MASKING_NAME_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid characters: " f"{normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -267,9 +267,7 @@ class CarWaleCity(BaseModel):
         normalized_value = float(value)
 
         if not minimum <= normalized_value <= maximum:
-            raise ValueError(
-                f"{field_name} must be between " f"{minimum} and {maximum}"
-            )
+            raise ValueError(f"{field_name} must be between {minimum} and {maximum}")
 
         return normalized_value
 

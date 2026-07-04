@@ -70,7 +70,7 @@ def _validate_min_request_interval(
         )
         or value < 0
     ):
-        raise ValueError("min_request_interval must be a " "non-negative number")
+        raise ValueError("min_request_interval must be a non-negative number")
 
     return float(value)
 
@@ -242,7 +242,7 @@ async def run_carwale_cities(
         )
 
         if claimed_job is None:
-            raise RuntimeError("Unable to claim the CarWale " "cities job")
+            raise RuntimeError("Unable to claim the CarWale cities job")
 
         claimed_job_id = claimed_job.job_id
 
@@ -349,7 +349,7 @@ async def run_carwale_cities(
                         await scraper_job_repository.mark_cancelled(
                             run_id=run_id,
                             job_id=claimed_job_id,
-                            reason=("CarWale cities " "command interrupted"),
+                            reason=("CarWale cities command interrupted"),
                         )
 
                 job_counts = await scraper_job_repository.count_by_status(run_id=run_id)
@@ -370,7 +370,7 @@ async def run_carwale_cities(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=("CarWale cities command " "interrupted"),
+                    stop_reason=("CarWale cities command interrupted"),
                 )
 
             except Exception as tracking_error:
@@ -439,7 +439,7 @@ async def run_carwale_cities(
                 )
 
         logger_service.error(
-            ("CarWale cities scraping failed: " f"{type(error).__name__}: {error}"),
+            (f"CarWale cities scraping failed: {type(error).__name__}: {error}"),
             context="CarWaleCitiesCommand",
         )
 

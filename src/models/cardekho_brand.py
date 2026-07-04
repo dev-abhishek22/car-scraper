@@ -205,7 +205,7 @@ class CarDekhoBrand(BaseModel):
 
         if actual != expected:
             raise ValueError(
-                "Brand status flags do not match " f"brandStatus={self.brand_status!r}"
+                f"Brand status flags do not match brandStatus={self.brand_status!r}"
             )
 
         return self
@@ -235,8 +235,7 @@ class CarDekhoBrand(BaseModel):
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"Brand {field_name} contains invalid "
-                f"characters: {normalized_value!r}"
+                f"Brand {field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -273,7 +272,7 @@ class CarDekhoBrand(BaseModel):
             value,
             str,
         ):
-            raise ValueError(f"Brand {field_name} must be a string " "or null")
+            raise ValueError(f"Brand {field_name} must be a string or null")
 
         normalized_value = value.strip()
 
@@ -289,9 +288,7 @@ class CarDekhoBrand(BaseModel):
             return None
 
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(
-                f"Brand {field_name} must be a " "positive integer or null"
-            )
+            raise ValueError(f"Brand {field_name} must be a positive integer or null")
 
         return value
 
@@ -306,7 +303,7 @@ class CarDekhoBrand(BaseModel):
 
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
             raise ValueError(
-                f"Brand {field_name} must be a " "non-negative integer or null"
+                f"Brand {field_name} must be a non-negative integer or null"
             )
 
         return value
@@ -343,7 +340,7 @@ class CarDekhoBrand(BaseModel):
             "EXPIRED",
         }:
             raise ValueError(
-                "Brand brandStatus must be one of: " "CURRENT, UPCOMING, EXPIRED"
+                "Brand brandStatus must be one of: CURRENT, UPCOMING, EXPIRED"
             )
 
         return normalized_status  # type: ignore[return-value]
@@ -430,7 +427,7 @@ class CarDekhoBrand(BaseModel):
 
         if provided_flags != status_flags:
             raise ValueError(
-                "Brand status flags do not match " f"brandStatus={brand_status!r}"
+                f"Brand status flags do not match brandStatus={brand_status!r}"
             )
 
         brand_url = cls._normalize_required_string(

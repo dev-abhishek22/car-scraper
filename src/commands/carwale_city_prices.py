@@ -290,12 +290,10 @@ async def run_carwale_city_prices(
 
             client_metrics = client.metrics_snapshot()
 
-        unresolved_failures = (
-            await (
-                carwale_city_price_failure_repository.count_unresolved(
-                    run_id=run_id,
-                    retryable_only=False,
-                )
+        unresolved_failures = await (
+            carwale_city_price_failure_repository.count_unresolved(
+                run_id=run_id,
+                retryable_only=False,
             )
         )
 

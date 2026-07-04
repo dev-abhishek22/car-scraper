@@ -74,7 +74,7 @@ def _validate_requests_per_second(
         )
         or requests_per_second <= 0
     ):
-        raise ValueError("requests_per_second must be greater " "than zero")
+        raise ValueError("requests_per_second must be greater than zero")
 
     return float(requests_per_second)
 
@@ -92,7 +92,7 @@ def _validate_pause_configuration(
         )
         or pause_every_requests < 0
     ):
-        raise ValueError("pause_every_requests must be a " "non-negative integer")
+        raise ValueError("pause_every_requests must be a non-negative integer")
 
     if (
         isinstance(pause_seconds, bool)
@@ -105,7 +105,7 @@ def _validate_pause_configuration(
         )
         or pause_seconds < 0
     ):
-        raise ValueError("pause_seconds must be a non-negative " "number")
+        raise ValueError("pause_seconds must be a non-negative number")
 
     normalized_pause_seconds = float(pause_seconds)
 
@@ -439,9 +439,7 @@ async def run_cardekho_cities(
                         list,
                     ):
                         raise ExternalResponseError(
-                            "CarDekho cities executor "
-                            "did not return a cities "
-                            "array"
+                            "CarDekho cities executor did not return a cities array"
                         )
 
                     upsert_result = await cardekho_city_repository.bulk_upsert(
@@ -542,7 +540,7 @@ async def run_cardekho_cities(
                     await _cancel_job_safely(
                         run_id=run_id,
                         job_id=job_id,
-                        reason=("CarDekho cities command " "interrupted"),
+                        reason=("CarDekho cities command interrupted"),
                     )
 
                     raise
@@ -672,7 +670,7 @@ async def run_cardekho_cities(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=("CarDekho cities command " "interrupted"),
+                    stop_reason=("CarDekho cities command interrupted"),
                     metadata=(_build_totals_metadata(aggregate)),
                 )
 
@@ -703,7 +701,7 @@ async def run_cardekho_cities(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=("CarDekho cities scraping " "failed"),
+                    stop_reason=("CarDekho cities scraping failed"),
                     stop_http_status=(_extract_http_status(error)),
                     metadata=(_build_totals_metadata(aggregate)),
                 )
@@ -720,11 +718,7 @@ async def run_cardekho_cities(
                 )
 
         logger_service.error(
-            (
-                "CarDekho cities scraping failed: "
-                f"{type(error).__name__}: "
-                f"{error}"
-            ),
+            (f"CarDekho cities scraping failed: {type(error).__name__}: {error}"),
             context="CarDekhoCitiesCommand",
         )
 

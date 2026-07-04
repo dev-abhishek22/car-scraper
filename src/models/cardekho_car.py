@@ -90,7 +90,7 @@ def _normalize_slug(
         normalized_value,
     ):
         raise ValueError(
-            f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+            f"{field_name} contains invalid characters: {normalized_value!r}"
         )
 
     return normalized_value
@@ -125,7 +125,7 @@ def _normalize_model_status(
         "UPCOMING",
         "DISCONTINUED",
     }:
-        raise ValueError(f"{field_name} must be CURRENT, " "UPCOMING, or DISCONTINUED")
+        raise ValueError(f"{field_name} must be CURRENT, UPCOMING, or DISCONTINUED")
 
     return normalized_value
 
@@ -373,7 +373,7 @@ class CarDekhoRelatedCar(BaseModel):
     def validate_car_slug(
         self,
     ) -> Self:
-        expected_car_slug = f"{self.brand_slug}-" f"{self.model_slug}"
+        expected_car_slug = f"{self.brand_slug}-{self.model_slug}"
 
         if self.car_slug != expected_car_slug:
             raise ValueError(
@@ -496,7 +496,7 @@ class CarDekhoOldGenerationComparison(BaseModel):
                 self.image,
             )
         ):
-            raise ValueError("Old-generation comparison cannot " "be empty")
+            raise ValueError("Old-generation comparison cannot be empty")
 
         if self.car_slug is not None:
             if self.brand_slug is None or self.model_slug is None:
@@ -506,7 +506,7 @@ class CarDekhoOldGenerationComparison(BaseModel):
                     "carSlug is present"
                 )
 
-            expected_car_slug = f"{self.brand_slug}-" f"{self.model_slug}"
+            expected_car_slug = f"{self.brand_slug}-{self.model_slug}"
 
             if self.car_slug != expected_car_slug:
                 raise ValueError(
@@ -772,7 +772,7 @@ class CarDekhoCar(BaseModel):
                 f"{self.source_model_document_id!r}"
             )
 
-        expected_car_slug = f"{self.brand_slug}-" f"{self.slug}"
+        expected_car_slug = f"{self.brand_slug}-{self.slug}"
 
         if self.car_slug != expected_car_slug:
             raise ValueError(
@@ -786,7 +786,7 @@ class CarDekhoCar(BaseModel):
 
         if self.is_upcoming != expected_is_upcoming:
             raise ValueError(
-                "isUpcoming does not match " f"modelStatus={self.model_status!r}"
+                f"isUpcoming does not match modelStatus={self.model_status!r}"
             )
 
         if (
@@ -798,7 +798,7 @@ class CarDekhoCar(BaseModel):
             and self.expected_launch_date is not None
         ):
             raise ValueError(
-                "Current and discontinued cars " "cannot have expectedLaunchDate"
+                "Current and discontinued cars cannot have expectedLaunchDate"
             )
 
         if self.total_variants != len(self.variants):
@@ -847,7 +847,7 @@ class CarDekhoCar(BaseModel):
             if variant.variant_id is not None:
                 if variant.variant_id in seen_ids:
                     raise ValueError(
-                        "variants contains duplicate " f"id={variant.variant_id}"
+                        f"variants contains duplicate id={variant.variant_id}"
                     )
 
                 seen_ids.add(
@@ -857,7 +857,7 @@ class CarDekhoCar(BaseModel):
             if variant.slug is not None:
                 if variant.slug in seen_slugs:
                     raise ValueError(
-                        "variants contains duplicate " f"slug={variant.slug!r}"
+                        f"variants contains duplicate slug={variant.slug!r}"
                     )
 
                 seen_slugs.add(
@@ -875,7 +875,7 @@ class CarDekhoCar(BaseModel):
         for car in cars:
             if car.car_slug in seen_car_slugs:
                 raise ValueError(
-                    f"{field_name} contains duplicate " f"carSlug={car.car_slug!r}"
+                    f"{field_name} contains duplicate carSlug={car.car_slug!r}"
                 )
 
             seen_car_slugs.add(
@@ -963,7 +963,7 @@ class CarDekhoCar(BaseModel):
 
         if is_upcoming != expected_is_upcoming:
             raise ValueError(
-                "model.isUpcoming does not match " f"modelStatus={model_status!r}"
+                f"model.isUpcoming does not match modelStatus={model_status!r}"
             )
 
         expected_launch_date = _normalize_optional_string(
@@ -980,7 +980,7 @@ class CarDekhoCar(BaseModel):
             and expected_launch_date is not None
         ):
             raise ValueError(
-                "Current and discontinued models " "cannot have expectedLaunchDate"
+                "Current and discontinued models cannot have expectedLaunchDate"
             )
 
         resolved_source_model_run_id = source_model_run_id

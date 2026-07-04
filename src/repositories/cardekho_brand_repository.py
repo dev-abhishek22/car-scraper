@@ -264,7 +264,7 @@ class CarDekhoBrandRepository:
         brand = await self.get_by_slug(slug)
 
         if brand is None:
-            raise LookupError("CarDekho brand was not found: " f"slug={slug!r}")
+            raise LookupError(f"CarDekho brand was not found: slug={slug!r}")
 
         return brand
 
@@ -326,7 +326,7 @@ class CarDekhoBrandRepository:
                 "EXPIRED",
             }:
                 raise ValueError(
-                    "brand_status must be one of: " "CURRENT, UPCOMING, EXPIRED"
+                    "brand_status must be one of: CURRENT, UPCOMING, EXPIRED"
                 )
 
             query["brandStatus"] = normalized_status
@@ -353,7 +353,7 @@ class CarDekhoBrandRepository:
                 "EXPIRED",
             }:
                 raise ValueError(
-                    "brand_status must be one of: " "CURRENT, UPCOMING, EXPIRED"
+                    "brand_status must be one of: CURRENT, UPCOMING, EXPIRED"
                 )
 
             query["brandStatus"] = normalized_status
@@ -428,7 +428,7 @@ class CarDekhoBrandRepository:
                 "EXPIRED",
             }:
                 raise ValueError(
-                    "brand_status must be one of: " "CURRENT, UPCOMING, EXPIRED"
+                    "brand_status must be one of: CURRENT, UPCOMING, EXPIRED"
                 )
 
             query["brandStatus"] = normalized_status

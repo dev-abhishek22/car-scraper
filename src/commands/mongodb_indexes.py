@@ -49,10 +49,7 @@ async def run_mongodb_indexes() -> dict[str, Any]:
 
     except Exception as error:
         logger_service.error(
-            (
-                "MongoDB index initialization failed: "
-                f"{type(error).__name__}: {error}"
-            ),
+            (f"MongoDB index initialization failed: {type(error).__name__}: {error}"),
             context="MongoDBIndexesCommand",
         )
 

@@ -107,7 +107,7 @@ class CarDekhoModelsExecutor:
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -129,9 +129,7 @@ class CarDekhoModelsExecutor:
             "UPCOMING",
             "EXPIRED",
         }:
-            raise ValueError(
-                "brand.brandStatus must be CURRENT, " "UPCOMING, or EXPIRED"
-            )
+            raise ValueError("brand.brandStatus must be CURRENT, UPCOMING, or EXPIRED")
 
         return normalized_status
 
@@ -337,9 +335,7 @@ class CarDekhoModelsExecutor:
                 Mapping,
             ):
                 raise ExternalResponseError(
-                    "CarDekho data.carModels contains "
-                    "an invalid item: "
-                    f"index={index}"
+                    f"CarDekho data.carModels contains an invalid item: index={index}"
                 )
 
             models.append(
@@ -469,7 +465,7 @@ class CarDekhoModelsExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured " "for the CarDekho brand-model API"
+                "Unexpected HTTP method configured for the CarDekho brand-model API"
             )
 
         response_data = await self._client.get_json(
@@ -481,7 +477,7 @@ class CarDekhoModelsExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}" f"{brand_url}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}{brand_url}"),
             },
         )
 
@@ -501,8 +497,7 @@ class CarDekhoModelsExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "CarDekho brand-model API response "
-                "does not contain a valid data object"
+                "CarDekho brand-model API response does not contain a valid data object"
             )
 
         (

@@ -122,9 +122,7 @@ class CarDekhoCarRepository:
             "UPCOMING",
             "DISCONTINUED",
         }:
-            raise ValueError(
-                "model_status must be CURRENT, " "UPCOMING, or DISCONTINUED"
-            )
+            raise ValueError("model_status must be CURRENT, UPCOMING, or DISCONTINUED")
 
         return normalized_status
 
@@ -234,7 +232,7 @@ class CarDekhoCarRepository:
         car = await self.get_by_model_id(model_id)
 
         if car is None:
-            raise LookupError("CarDekho car was not found: " f"model_id={model_id}")
+            raise LookupError(f"CarDekho car was not found: model_id={model_id}")
 
         return car
 
@@ -321,7 +319,7 @@ class CarDekhoCarRepository:
         car = await self.get_by_car_slug(car_slug)
 
         if car is None:
-            raise LookupError("CarDekho car was not found: " f"car_slug={car_slug!r}")
+            raise LookupError(f"CarDekho car was not found: car_slug={car_slug!r}")
 
         return car
 

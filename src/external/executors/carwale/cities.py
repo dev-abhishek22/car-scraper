@@ -86,7 +86,7 @@ def scrape_carwale_cities(
 
     if endpoint.method != "GET":
         raise RuntimeError(
-            "Unexpected HTTP method configured for " "the CarWale cities API"
+            "Unexpected HTTP method configured for the CarWale cities API"
         )
 
     logger_service.info(
@@ -115,7 +115,7 @@ def scrape_carwale_cities(
         list,
     ):
         raise ExternalResponseError(
-            "CarWale cities API returned an invalid " "response. Expected a JSON array."
+            "CarWale cities API returned an invalid response. Expected a JSON array."
         )
 
     cities: list[dict[str, Any]] = []

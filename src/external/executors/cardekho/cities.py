@@ -199,7 +199,7 @@ class CarDekhoCitiesExecutor:
 
         if index >= bundle_length:
             raise ExternalResponseError(
-                "CarDekho cities bundle ended before " "the JSON.parse argument"
+                "CarDekho cities bundle ended before the JSON.parse argument"
             )
 
         quote = bundle_text[index]
@@ -210,8 +210,7 @@ class CarDekhoCitiesExecutor:
             "`",
         }:
             raise ExternalResponseError(
-                "CarDekho cities JSON.parse argument "
-                "is not a JavaScript string literal"
+                "CarDekho cities JSON.parse argument is not a JavaScript string literal"
             )
 
         literal_start = index
@@ -237,8 +236,7 @@ class CarDekhoCitiesExecutor:
             index += 1
 
         raise ExternalResponseError(
-            "CarDekho cities bundle contains an "
-            "unterminated JSON.parse string literal"
+            "CarDekho cities bundle contains an unterminated JSON.parse string literal"
         )
 
     @staticmethod
@@ -266,7 +264,7 @@ class CarDekhoCitiesExecutor:
             ValueError,
         ) as error:
             raise ExternalResponseError(
-                "CarDekho cities JavaScript string " "literal could not be decoded"
+                "CarDekho cities JavaScript string literal could not be decoded"
             ) from error
 
         if not isinstance(
@@ -274,7 +272,7 @@ class CarDekhoCitiesExecutor:
             str,
         ):
             raise ExternalResponseError(
-                "CarDekho cities JSON.parse argument " "did not decode to a string"
+                "CarDekho cities JSON.parse argument did not decode to a string"
             )
 
         return decoded_value
@@ -309,9 +307,7 @@ class CarDekhoCitiesExecutor:
                     or bundle_text[closing_index] != ")"
                 ):
                     raise ExternalResponseError(
-                        "CarDekho cities bundle "
-                        "contains an invalid "
-                        "JSON.parse call"
+                        "CarDekho cities bundle contains an invalid JSON.parse call"
                     )
 
                 decoded_json = cls._decode_javascript_string_literal(string_literal)
@@ -331,8 +327,7 @@ class CarDekhoCitiesExecutor:
                 else:
                     parse_errors.append(
                         ExternalResponseError(
-                            "CarDekho cities JSON.parse "
-                            "payload contains invalid JSON"
+                            "CarDekho cities JSON.parse payload contains invalid JSON"
                         )
                     )
 
@@ -368,11 +363,11 @@ class CarDekhoCitiesExecutor:
             bytes,
         ):
             raise ExternalResponseError(
-                "CarDekho cities response content " "must be bytes"
+                "CarDekho cities response content must be bytes"
             )
 
         if not response_content:
-            raise ExternalResponseError("CarDekho cities response body is " "empty")
+            raise ExternalResponseError("CarDekho cities response body is empty")
 
         try:
             plain_text = response_content.decode("utf-8")
@@ -418,7 +413,7 @@ class CarDekhoCitiesExecutor:
 
         except UnicodeDecodeError as error:
             raise ExternalResponseError(
-                "Decompressed CarDekho cities bundle " "is not valid UTF-8"
+                "Decompressed CarDekho cities bundle is not valid UTF-8"
             ) from error
 
         if not cls._looks_like_cities_bundle(bundle_text):
@@ -486,7 +481,7 @@ class CarDekhoCitiesExecutor:
 
         if not isinstance(value, list):
             raise ExternalResponseError(
-                "CarDekho city REG must be an array: " f"row_index={row_index}"
+                f"CarDekho city REG must be an array: row_index={row_index}"
             )
 
         regions: list[dict[str, Any]] = []
@@ -510,12 +505,12 @@ class CarDekhoCitiesExecutor:
 
             region_id = cls._coerce_positive_integer(
                 raw_region.get("RID"),
-                field_name=(f"cities[{row_index}]." f"REG[{region_index}].RID"),
+                field_name=(f"cities[{row_index}].REG[{region_index}].RID"),
             )
 
             region_name = cls._validate_non_empty_string(
                 raw_region.get("RN"),
-                field_name=(f"cities[{row_index}]." f"REG[{region_index}].RN"),
+                field_name=(f"cities[{row_index}].REG[{region_index}].RN"),
             )
 
             if region_id in seen_region_ids:
@@ -544,7 +539,7 @@ class CarDekhoCitiesExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "CarDekho city row must be an " f"object: row_index={row_index}"
+                f"CarDekho city row must be an object: row_index={row_index}"
             )
 
         city_id = cls._coerce_positive_integer(
@@ -683,9 +678,9 @@ class CarDekhoCitiesExecutor:
         cities = list(cities_by_id.values())
 
         for city in cities:
-            city["regions"].sort(key=lambda region: (region["regionId"]))
+            city["regions"].sort(key=lambda region: region["regionId"])
 
-        cities.sort(key=lambda city: (city["cityId"]))
+        cities.sort(key=lambda city: city["cityId"])
 
         return cities
 
@@ -696,7 +691,7 @@ class CarDekhoCitiesExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured " "for the CarDekho cities bundle"
+                "Unexpected HTTP method configured for the CarDekho cities bundle"
             )
 
         response = await self._client.get(
@@ -765,7 +760,7 @@ class CarDekhoCitiesExecutor:
 
         if not cities:
             raise ExternalResponseError(
-                "CarDekho cities bundle returned no " "usable cities"
+                "CarDekho cities bundle returned no usable cities"
             )
 
         return {

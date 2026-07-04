@@ -173,7 +173,7 @@ class CarWaleCarData(BaseModel):
                 or version_id <= 0
             ):
                 raise ValueError(
-                    "Version versionId must be a positive integer: " f"index={index}"
+                    f"Version versionId must be a positive integer: index={index}"
                 )
 
             if version_id in seen_version_ids:

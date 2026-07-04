@@ -13,6 +13,9 @@ from src.cli.cardekho.car_cli import (
 from src.cli.cardekho.cities_cli import (
     add_cardekho_cities_command,
 )
+from src.cli.cardekho.city_price_cli import (
+    add_cardekho_city_prices_command,
+)
 from src.cli.cardekho.model_cli import (
     add_cardekho_models_command,
 )
@@ -104,6 +107,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_cardekho_cities_command(
+        subparsers=subparsers,
+    )
+
+    add_cardekho_city_prices_command(
         subparsers=subparsers,
     )
 

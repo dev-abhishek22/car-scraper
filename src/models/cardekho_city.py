@@ -278,7 +278,7 @@ class CarDekhoCity(BaseModel):
         for region in self.regions:
             if region.region_id in seen_region_ids:
                 raise ValueError(
-                    "regions contains duplicate " f"regionId={region.region_id}"
+                    f"regions contains duplicate regionId={region.region_id}"
                 )
 
             seen_region_ids.add(region.region_id)

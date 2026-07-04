@@ -35,7 +35,7 @@ def add_cardekho_brands_command(
 ) -> None:
     parser = subparsers.add_parser(
         "cardekho-brands",
-        help=("Fetch CarDekho brands and store " "them in MongoDB"),
+        help=("Fetch CarDekho brands and store them in MongoDB"),
         description=(
             "Fetch the CarDekho brand list, store the "
             "brands in the cardekho_brands MongoDB "

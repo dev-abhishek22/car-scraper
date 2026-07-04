@@ -38,7 +38,7 @@ def add_carwale_cities_command(
 ) -> None:
     parser = subparsers.add_parser(
         "carwale-cities",
-        help=("Fetch all CarWale cities and store " "them in MongoDB"),
+        help=("Fetch all CarWale cities and store them in MongoDB"),
         description=(
             "Fetch all cities from the CarWale "
             "cities API in one request, upsert "
@@ -53,13 +53,13 @@ def add_carwale_cities_command(
         type=float,
         default=2.0,
         metavar="SECONDS",
-        help=("Minimum interval between CarWale " "request starts. Default: 2"),
+        help=("Minimum interval between CarWale request starts. Default: 2"),
     )
 
     parser.add_argument(
         "--show-request",
         action="store_true",
-        help=("Print the prepared HTTP request " "before sending it"),
+        help=("Print the prepared HTTP request before sending it"),
     )
 
     parser.set_defaults(

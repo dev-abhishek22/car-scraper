@@ -227,7 +227,7 @@ class CarDekhoCarsExecutor:
             normalized_value,
         ):
             raise ValueError(
-                f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -316,9 +316,7 @@ class CarDekhoCarsExecutor:
         normalized_status = value.strip().upper()
 
         if normalized_status not in SOURCE_MODEL_STATUSES:
-            raise ValueError(
-                f"{field_name} must be CURRENT, " "UPCOMING, or DISCONTINUED"
-            )
+            raise ValueError(f"{field_name} must be CURRENT, UPCOMING, or DISCONTINUED")
 
         return normalized_status
 
@@ -584,7 +582,7 @@ class CarDekhoCarsExecutor:
 
         if response_status is False:
             raise ExternalResponseError(
-                "CarDekho model-overview API returned " "status=false"
+                "CarDekho model-overview API returned status=false"
             )
 
         response_status_code = response_data.get(
@@ -698,8 +696,7 @@ class CarDekhoCarsExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured "
-                "for the CarDekho model-overview API"
+                "Unexpected HTTP method configured for the CarDekho model-overview API"
             )
 
         normalized_referer_path = referer_path
@@ -717,7 +714,7 @@ class CarDekhoCarsExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}{normalized_referer_path}"),
             },
         )
 
@@ -1140,7 +1137,7 @@ class CarDekhoCarsExecutor:
         ):
             return []
 
-        current_car_slug = f"{current_brand_slug}-" f"{current_model_slug}"
+        current_car_slug = f"{current_brand_slug}-{current_model_slug}"
 
         similar_cars: list[dict[str, Any]] = []
 
@@ -1257,7 +1254,7 @@ class CarDekhoCarsExecutor:
         if not isinstance(nav_compare, list):
             return []
 
-        current_car_slug = f"{current_brand_slug}-" f"{current_model_slug}"
+        current_car_slug = f"{current_brand_slug}-{current_model_slug}"
 
         comparisons: list[dict[str, Any]] = []
 
@@ -1432,7 +1429,7 @@ class CarDekhoCarsExecutor:
         ):
             return None
 
-        current_car_slug = f"{current_brand_slug}-" f"{current_model_slug}"
+        current_car_slug = f"{current_brand_slug}-{current_model_slug}"
 
         old_car_slug = cls._extract_other_car_slug(
             comparison_url=comparison_url,
@@ -1470,7 +1467,7 @@ class CarDekhoCarsExecutor:
 
                 old_brand_slug = current_brand_slug
 
-                old_car_slug = f"{old_brand_slug}-" f"{old_model_slug}"
+                old_car_slug = f"{old_brand_slug}-{old_model_slug}"
 
         return {
             "modelName": model_name,

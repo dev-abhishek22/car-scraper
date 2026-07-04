@@ -297,7 +297,7 @@ class CarDekhoCityRepository:
         city = await self.get_by_city_id(city_id)
 
         if city is None:
-            raise LookupError("CarDekho city was not found: " f"city_id={city_id}")
+            raise LookupError(f"CarDekho city was not found: city_id={city_id}")
 
         return city
 

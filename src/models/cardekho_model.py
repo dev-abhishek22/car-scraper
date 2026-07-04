@@ -173,7 +173,7 @@ class CarDekhoModel(BaseModel):
 
         if self.is_upcoming != expected_is_upcoming:
             raise ValueError(
-                "isUpcoming does not match " f"modelStatus={self.model_status!r}"
+                f"isUpcoming does not match modelStatus={self.model_status!r}"
             )
 
         if (
@@ -185,7 +185,7 @@ class CarDekhoModel(BaseModel):
             and self.expected_launch_date is not None
         ):
             raise ValueError(
-                "Current and discontinued models " "cannot have an expectedLaunchDate"
+                "Current and discontinued models cannot have an expectedLaunchDate"
             )
 
         return self
@@ -264,7 +264,7 @@ class CarDekhoModel(BaseModel):
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -301,7 +301,7 @@ class CarDekhoModel(BaseModel):
             "DISCONTINUED",
         }:
             raise ValueError(
-                "model.modelStatus must be CURRENT, " "UPCOMING, or DISCONTINUED"
+                "model.modelStatus must be CURRENT, UPCOMING, or DISCONTINUED"
             )
 
         return cast(
@@ -320,7 +320,7 @@ class CarDekhoModel(BaseModel):
             value,
             str,
         ):
-            raise ValueError("source_brand_run_id must be a " "string or null")
+            raise ValueError("source_brand_run_id must be a string or null")
 
         normalized_value = value.strip()
 
@@ -420,7 +420,7 @@ class CarDekhoModel(BaseModel):
 
         if is_upcoming != expected_is_upcoming:
             raise ValueError(
-                "Model isUpcoming does not match " f"modelStatus={model_status!r}"
+                f"Model isUpcoming does not match modelStatus={model_status!r}"
             )
 
         expected_launch_date = cls._normalize_optional_string(
@@ -437,7 +437,7 @@ class CarDekhoModel(BaseModel):
             and expected_launch_date is not None
         ):
             raise ValueError(
-                "Current and discontinued models " "cannot have an expectedLaunchDate"
+                "Current and discontinued models cannot have an expectedLaunchDate"
             )
 
         resolved_source_brand_run_id = source_brand_run_id

@@ -121,8 +121,7 @@ async def _load_carwale_cities(
             )
 
         raise CarWaleCityPriceJobSourceError(
-            "No active CarWale cities were found in "
-            "MongoDB. Run carwale-cities first."
+            "No active CarWale cities were found in MongoDB. Run carwale-cities first."
         )
 
     return cities

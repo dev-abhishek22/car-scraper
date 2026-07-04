@@ -995,7 +995,7 @@ async def run_carwale_cars(
                 )
 
         logger_service.error(
-            ("CarWale cars scraping failed: " f"{type(error).__name__}: {error}"),
+            (f"CarWale cars scraping failed: {type(error).__name__}: {error}"),
             context="CarWaleCarsCommand",
         )
 

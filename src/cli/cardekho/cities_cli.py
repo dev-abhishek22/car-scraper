@@ -54,7 +54,7 @@ def add_cardekho_cities_command(
 ) -> None:
     parser = subparsers.add_parser(
         "cardekho-cities",
-        help=("Fetch CarDekho cities from the " "static cities bundle"),
+        help=("Fetch CarDekho cities from the static cities bundle"),
         description=(
             "Download the CarDekho webpack cities "
             "bundle, extract and normalize the city "

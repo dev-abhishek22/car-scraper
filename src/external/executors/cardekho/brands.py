@@ -63,7 +63,7 @@ class CarDekhoBrandsExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "CarDekho response does not contain " f"a valid {field_name} object"
+                f"CarDekho response does not contain a valid {field_name} object"
             )
 
         return value
@@ -145,7 +145,7 @@ class CarDekhoBrandsExecutor:
 
         if not SLUG_PATTERN.fullmatch(normalized_slug):
             raise ExternalResponseError(
-                f"{field_name} contains invalid " f"characters: {normalized_slug!r}"
+                f"{field_name} contains invalid characters: {normalized_slug!r}"
             )
 
         return normalized_slug
@@ -282,17 +282,17 @@ class CarDekhoBrandsExecutor:
     ) -> dict[str, Any]:
         brand_name = cls._validate_string(
             raw_brand.get("brandName"),
-            field_name=("CarDekho catalogue brandName " f"at index {index}"),
+            field_name=(f"CarDekho catalogue brandName at index {index}"),
         )
 
         slug = cls._normalize_slug(
             raw_brand.get("slug"),
-            field_name=("CarDekho catalogue slug " f"at index {index}"),
+            field_name=(f"CarDekho catalogue slug at index {index}"),
         )
 
         brand_url = cls._validate_string(
             raw_brand.get("brandUrl"),
-            field_name=("CarDekho catalogue brandUrl " f"at index {index}"),
+            field_name=(f"CarDekho catalogue brandUrl at index {index}"),
         )
 
         tool_tip_text = cls._normalize_optional_string(raw_brand.get("toolTipText"))
@@ -484,7 +484,7 @@ class CarDekhoBrandsExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured " "for the CarDekho brands API"
+                "Unexpected HTTP method configured for the CarDekho brands API"
             )
 
         response_data = await self._client.get_json(
@@ -498,8 +498,7 @@ class CarDekhoBrandsExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "CarDekho brands API returned an "
-                "invalid response. Expected an object"
+                "CarDekho brands API returned an invalid response. Expected an object"
             )
 
         data = self._require_mapping(

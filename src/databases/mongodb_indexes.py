@@ -42,6 +42,12 @@ CARWALE_CITY_PRICE_RUNS_COLLECTION: Final[str] = "carwale_city_price_runs"
 
 CARWALE_CITY_PRICE_FAILURES_COLLECTION: Final[str] = "carwale_city_price_failures"
 
+CARDEKHO_CITY_PRICES_COLLECTION: Final[str] = "cardekho_city_prices"
+
+CARDEKHO_CITY_PRICE_RUNS_COLLECTION: Final[str] = "cardekho_city_price_runs"
+
+CARDEKHO_CITY_PRICE_FAILURES_COLLECTION: Final[str] = "cardekho_city_price_failures"
+
 
 async def _create_scraper_run_indexes(
     connection: MongoConnection,
@@ -457,10 +463,7 @@ async def _create_carwale_car_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "data.versions.versionId",
-                        ASCENDING,
-                    ),
+                    ("data.versions.versionId", ASCENDING),
                 ],
                 name="idx_version_id",
             ),
@@ -502,14 +505,8 @@ async def _create_carwale_car_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "requestContext.cityId",
-                        ASCENDING,
-                    ),
-                    (
-                        "requestContext.areaId",
-                        ASCENDING,
-                    ),
+                    ("requestContext.cityId", ASCENDING),
+                    ("requestContext.areaId", ASCENDING),
                 ],
                 name="idx_request_city_area",
             ),
@@ -582,19 +579,13 @@ async def _create_cardekho_car_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "compareWith.carSlug",
-                        ASCENDING,
-                    ),
+                    ("compareWith.carSlug", ASCENDING),
                 ],
                 name="idx_compare_with_car_slug",
             ),
             IndexModel(
                 [
-                    (
-                        "similarCars.carSlug",
-                        ASCENDING,
-                    ),
+                    ("similarCars.carSlug", ASCENDING),
                 ],
                 name="idx_similar_car_slug",
             ),
@@ -607,17 +598,14 @@ async def _create_cardekho_car_indexes(
                 ],
                 name="idx_old_generation_car_slug",
                 partialFilterExpression={
-                    ("oldGenerationComparison." "carSlug"): {
+                    ("oldGenerationComparison.carSlug"): {
                         "$type": "string",
                     },
                 },
             ),
             IndexModel(
                 [
-                    (
-                        "sourceModelDocumentId",
-                        ASCENDING,
-                    ),
+                    ("sourceModelDocumentId", ASCENDING),
                     ("updatedAt", DESCENDING),
                 ],
                 name="idx_source_model_document",
@@ -671,21 +659,12 @@ async def _create_carwale_trim_specs_features_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "makeMaskingName",
-                        ASCENDING,
-                    ),
-                    (
-                        "modelMaskingName",
-                        ASCENDING,
-                    ),
-                    (
-                        "trimMaskingName",
-                        ASCENDING,
-                    ),
+                    ("makeMaskingName", ASCENDING),
+                    ("modelMaskingName", ASCENDING),
+                    ("trimMaskingName", ASCENDING),
                     ("versionId", ASCENDING),
                 ],
-                name=("idx_make_model_trim_slug_version"),
+                name="idx_make_model_trim_slug_version",
             ),
             IndexModel(
                 [
@@ -696,13 +675,10 @@ async def _create_carwale_trim_specs_features_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "sourceCarDocumentId",
-                        ASCENDING,
-                    ),
+                    ("sourceCarDocumentId", ASCENDING),
                     ("versionId", ASCENDING),
                 ],
-                name=("idx_source_car_document_version"),
+                name="idx_source_car_document_version",
             ),
             IndexModel(
                 [
@@ -744,10 +720,7 @@ async def _create_carwale_city_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "cityMaskingName",
-                        ASCENDING,
-                    ),
+                    ("cityMaskingName", ASCENDING),
                 ],
                 name="idx_city_masking_name",
             ),
@@ -864,7 +837,7 @@ async def _create_cardekho_city_indexes(
     )
 
 
-async def _create_city_price_indexes(
+async def _create_carwale_city_price_indexes(
     connection: MongoConnection,
 ) -> dict[str, list[str]]:
     city_prices_collection = connection.collection(CARWALE_CITY_PRICES_COLLECTION)
@@ -896,18 +869,9 @@ async def _create_city_price_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "makeMaskingName",
-                        ASCENDING,
-                    ),
-                    (
-                        "modelMaskingName",
-                        ASCENDING,
-                    ),
-                    (
-                        "cityMaskingName",
-                        ASCENDING,
-                    ),
+                    ("makeMaskingName", ASCENDING),
+                    ("modelMaskingName", ASCENDING),
+                    ("cityMaskingName", ASCENDING),
                 ],
                 name="idx_make_model_city",
             ),
@@ -939,22 +903,10 @@ async def _create_city_price_indexes(
             ),
             IndexModel(
                 [
-                    (
-                        "filters.brand",
-                        ASCENDING,
-                    ),
-                    (
-                        "filters.model",
-                        ASCENDING,
-                    ),
-                    (
-                        "filters.city",
-                        ASCENDING,
-                    ),
-                    (
-                        "startedAt",
-                        DESCENDING,
-                    ),
+                    ("filters.brand", ASCENDING),
+                    ("filters.model", ASCENDING),
+                    ("filters.city", ASCENDING),
+                    ("startedAt", DESCENDING),
                 ],
                 name="idx_filters_started_at",
             ),
@@ -981,10 +933,7 @@ async def _create_city_price_indexes(
                     ("runId", ASCENDING),
                     ("status", ASCENDING),
                     ("retryable", ASCENDING),
-                    (
-                        "lastFailedAt",
-                        ASCENDING,
-                    ),
+                    ("lastFailedAt", ASCENDING),
                 ],
                 name="idx_unresolved_failures",
             ),
@@ -1000,12 +949,9 @@ async def _create_city_price_indexes(
                 [
                     ("status", ASCENDING),
                     ("retryable", ASCENDING),
-                    (
-                        "lastFailedAt",
-                        DESCENDING,
-                    ),
+                    ("lastFailedAt", DESCENDING),
                 ],
-                name=("idx_status_retryable_failed_at"),
+                name="idx_status_retryable_failed_at",
             ),
         ]
     )
@@ -1014,6 +960,190 @@ async def _create_city_price_indexes(
         CARWALE_CITY_PRICES_COLLECTION: (city_price_indexes),
         CARWALE_CITY_PRICE_RUNS_COLLECTION: (city_price_run_indexes),
         CARWALE_CITY_PRICE_FAILURES_COLLECTION: (city_price_failure_indexes),
+    }
+
+
+async def _create_cardekho_city_price_indexes(
+    connection: MongoConnection,
+) -> dict[str, list[str]]:
+    city_prices_collection = connection.collection(CARDEKHO_CITY_PRICES_COLLECTION)
+
+    city_price_runs_collection = connection.collection(
+        CARDEKHO_CITY_PRICE_RUNS_COLLECTION
+    )
+
+    city_price_failures_collection = connection.collection(
+        CARDEKHO_CITY_PRICE_FAILURES_COLLECTION
+    )
+
+    city_price_indexes = await city_prices_collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("modelId", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="uniq_model_city",
+                unique=True,
+            ),
+            IndexModel(
+                [
+                    ("lastRunId", ASCENDING),
+                    ("_id", ASCENDING),
+                ],
+                name="idx_last_run_job",
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("modelSlug", ASCENDING),
+                    ("citySlug", ASCENDING),
+                ],
+                name="idx_brand_model_city",
+            ),
+            IndexModel(
+                [
+                    ("modelStatus", ASCENDING),
+                    ("priceAvailable", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_status_price_available",
+            ),
+            IndexModel(
+                [
+                    ("modelId", ASCENDING),
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_model_scraped_at",
+            ),
+            IndexModel(
+                [
+                    ("cityId", ASCENDING),
+                    ("scrapedAt", DESCENDING),
+                ],
+                name="idx_city_scraped_at",
+            ),
+            IndexModel(
+                [
+                    ("variants.trimId", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_trim_city",
+            ),
+            IndexModel(
+                [
+                    ("variants.variantSlug", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_variant_slug_city",
+            ),
+            IndexModel(
+                [
+                    ("source.carDocumentId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_car_document",
+            ),
+            IndexModel(
+                [
+                    ("source.cityDocumentId", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_source_city_document",
+            ),
+        ]
+    )
+
+    city_price_run_indexes = await city_price_runs_collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("status", ASCENDING),
+                    ("updatedAt", DESCENDING),
+                ],
+                name="idx_status_updated_at",
+            ),
+            IndexModel(
+                [
+                    ("filters.brand", ASCENDING),
+                    ("filters.model", ASCENDING),
+                    ("filters.modelId", ASCENDING),
+                    ("filters.city", ASCENDING),
+                    ("filters.cityId", ASCENDING),
+                    ("startedAt", DESCENDING),
+                ],
+                name="idx_filters_started_at",
+            ),
+            IndexModel(
+                [
+                    (
+                        "filters.popularCitiesOnly",
+                        ASCENDING,
+                    ),
+                    ("status", ASCENDING),
+                    ("startedAt", DESCENDING),
+                ],
+                name="idx_popular_status_started_at",
+            ),
+            IndexModel(
+                [
+                    ("startedAt", DESCENDING),
+                ],
+                name="idx_started_at",
+            ),
+        ]
+    )
+
+    city_price_failure_indexes = await city_price_failures_collection.create_indexes(
+        [
+            IndexModel(
+                [
+                    ("runId", ASCENDING),
+                    ("jobId", ASCENDING),
+                ],
+                name="idx_run_job",
+            ),
+            IndexModel(
+                [
+                    ("runId", ASCENDING),
+                    ("status", ASCENDING),
+                    ("retryable", ASCENDING),
+                    ("lastFailedAt", ASCENDING),
+                ],
+                name="idx_unresolved_failures",
+            ),
+            IndexModel(
+                [
+                    ("runId", ASCENDING),
+                    ("modelId", ASCENDING),
+                    ("cityId", ASCENDING),
+                ],
+                name="idx_run_model_city",
+            ),
+            IndexModel(
+                [
+                    ("status", ASCENDING),
+                    ("retryable", ASCENDING),
+                    ("lastFailedAt", DESCENDING),
+                ],
+                name="idx_status_retryable_failed_at",
+            ),
+            IndexModel(
+                [
+                    ("brandSlug", ASCENDING),
+                    ("modelSlug", ASCENDING),
+                    ("citySlug", ASCENDING),
+                    ("status", ASCENDING),
+                ],
+                name="idx_brand_model_city_status",
+            ),
+        ]
+    )
+
+    return {
+        CARDEKHO_CITY_PRICES_COLLECTION: (city_price_indexes),
+        CARDEKHO_CITY_PRICE_RUNS_COLLECTION: (city_price_run_indexes),
+        CARDEKHO_CITY_PRICE_FAILURES_COLLECTION: (city_price_failure_indexes),
     }
 
 
@@ -1056,7 +1186,9 @@ async def ensure_mongodb_indexes(
 
     cardekho_city_indexes = await _create_cardekho_city_indexes(connection)
 
-    city_price_indexes = await _create_city_price_indexes(connection)
+    carwale_city_price_indexes = await _create_carwale_city_price_indexes(connection)
+
+    cardekho_city_price_indexes = await _create_cardekho_city_price_indexes(connection)
 
     created_indexes = {
         SCRAPER_RUNS_COLLECTION: (scraper_run_indexes),
@@ -1070,11 +1202,12 @@ async def ensure_mongodb_indexes(
         CARWALE_TRIM_SPECS_FEATURES_COLLECTION: (carwale_trim_specs_features_indexes),
         CARWALE_CITIES_COLLECTION: (carwale_city_indexes),
         CARDEKHO_CITIES_COLLECTION: (cardekho_city_indexes),
-        **city_price_indexes,
+        **carwale_city_price_indexes,
+        **cardekho_city_price_indexes,
     }
 
     logger_service.info(
-        ("MongoDB indexes initialized: " f"collections={list(created_indexes)}"),
+        (f"MongoDB indexes initialized: collections={list(created_indexes)}"),
         context="MongoDBIndexes",
     )
 

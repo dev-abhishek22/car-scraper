@@ -57,7 +57,7 @@ def add_cardekho_cars_command(
 ) -> None:
     parser = subparsers.add_parser(
         "cardekho-cars",
-        help=("Fetch CarDekho cars using models " "stored in MongoDB"),
+        help=("Fetch CarDekho cars using models stored in MongoDB"),
         description=(
             "Read models from the cardekho_models "
             "MongoDB collection, fetch model overview "
@@ -100,7 +100,7 @@ def add_cardekho_cars_command(
         type=int,
         default=3,
         metavar="COUNT",
-        help=("Number of concurrent model workers. " "Default: 3"),
+        help=("Number of concurrent model workers. Default: 3"),
     )
 
     parser.add_argument(

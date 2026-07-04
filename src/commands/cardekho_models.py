@@ -80,7 +80,7 @@ def _validate_requests_per_second(
         )
         or requests_per_second <= 0
     ):
-        raise ValueError("requests_per_second must be greater " "than zero")
+        raise ValueError("requests_per_second must be greater than zero")
 
     return float(requests_per_second)
 
@@ -98,7 +98,7 @@ def _validate_pause_configuration(
         )
         or pause_every_requests < 0
     ):
-        raise ValueError("pause_every_requests must be a " "non-negative integer")
+        raise ValueError("pause_every_requests must be a non-negative integer")
 
     if (
         isinstance(pause_seconds, bool)
@@ -345,7 +345,7 @@ async def _select_brands(
 
     if not brands:
         raise LookupError(
-            "No CarDekho brands were found in " "MongoDB. Run cardekho-brands first."
+            "No CarDekho brands were found in MongoDB. Run cardekho-brands first."
         )
 
     return brands
@@ -541,7 +541,7 @@ async def run_cardekho_models(
             async def worker(
                 worker_number: int,
             ) -> None:
-                worker_id = "cardekho-models-worker-" f"{worker_number}"
+                worker_id = f"cardekho-models-worker-{worker_number}"
 
                 while True:
                     claimed_job = await scraper_job_repository.claim_next(
@@ -562,7 +562,7 @@ async def run_cardekho_models(
                         Mapping,
                     ):
                         payload_error = ValueError(
-                            "Model job payload must " "be an object"
+                            "Model job payload must be an object"
                         )
 
                         await scraper_job_repository.mark_failed(
@@ -695,7 +695,7 @@ async def run_cardekho_models(
             worker_tasks = [
                 asyncio.create_task(
                     worker(worker_number),
-                    name=("cardekho-models-worker-" f"{worker_number}"),
+                    name=(f"cardekho-models-worker-{worker_number}"),
                 )
                 for worker_number in range(
                     1,
@@ -848,10 +848,7 @@ async def run_cardekho_models(
                 )
 
             logger_service.error(
-                (
-                    "CarDekho models scraping failed: "
-                    f"{type(error).__name__}: {error}"
-                ),
+                (f"CarDekho models scraping failed: {type(error).__name__}: {error}"),
                 context="CarDekhoModelsCommand",
             )
 

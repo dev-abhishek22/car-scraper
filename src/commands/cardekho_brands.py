@@ -155,7 +155,7 @@ async def _mark_job_failed_safely(
 
     except Exception as tracking_error:
         logger_service.error(
-            ("Unable to mark CarDekho brands " "job as failed"),
+            ("Unable to mark CarDekho brands job as failed"),
             exception=tracking_error,
             context="CarDekhoBrandsCommand",
         )
@@ -186,7 +186,7 @@ async def _mark_job_cancelled_safely(
 
     except Exception as tracking_error:
         logger_service.error(
-            ("Unable to mark CarDekho brands " "job as cancelled"),
+            ("Unable to mark CarDekho brands job as cancelled"),
             exception=tracking_error,
             context="CarDekhoBrandsCommand",
         )
@@ -248,10 +248,10 @@ async def run_cardekho_brands() -> dict[str, Any]:
         )
 
         if claimed_job is None:
-            raise RuntimeError("Unable to claim the CarDekho " "brands job")
+            raise RuntimeError("Unable to claim the CarDekho brands job")
 
         logger_service.info(
-            ("Starting CarDekho brands scraping: " f"run_id={run_id}"),
+            (f"Starting CarDekho brands scraping: run_id={run_id}"),
             context="CarDekhoBrandsCommand",
         )
 
@@ -371,7 +371,7 @@ async def run_cardekho_brands() -> dict[str, Any]:
 
         except Exception as tracking_error:
             logger_service.error(
-                ("Unable to mark CarDekho brands " "run as interrupted"),
+                ("Unable to mark CarDekho brands run as interrupted"),
                 exception=tracking_error,
                 context="CarDekhoBrandsCommand",
             )
@@ -403,13 +403,13 @@ async def run_cardekho_brands() -> dict[str, Any]:
 
         except Exception as tracking_error:
             logger_service.error(
-                ("Unable to mark CarDekho brands " "run as failed"),
+                ("Unable to mark CarDekho brands run as failed"),
                 exception=tracking_error,
                 context="CarDekhoBrandsCommand",
             )
 
         logger_service.error(
-            ("CarDekho brands scraping failed: " f"{type(error).__name__}: {error}"),
+            (f"CarDekho brands scraping failed: {type(error).__name__}: {error}"),
             context="CarDekhoBrandsCommand",
         )
 

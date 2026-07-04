@@ -56,7 +56,7 @@ def add_cardekho_models_command(
 ) -> None:
     parser = subparsers.add_parser(
         "cardekho-models",
-        help=("Fetch CarDekho models using brands " "stored in MongoDB"),
+        help=("Fetch CarDekho models using brands stored in MongoDB"),
         description=(
             "Read current and upcoming brands from "
             "the cardekho_brands MongoDB collection, "
@@ -86,7 +86,7 @@ def add_cardekho_models_command(
         type=int,
         default=5,
         metavar="COUNT",
-        help=("Number of concurrent brand workers. " "Default: 5"),
+        help=("Number of concurrent brand workers. Default: 5"),
     )
 
     parser.add_argument(
@@ -95,7 +95,7 @@ def add_cardekho_models_command(
         default=5.0,
         metavar="RPS",
         help=(
-            "Maximum global request starts per second " "across all workers. Default: 5"
+            "Maximum global request starts per second across all workers. Default: 5"
         ),
     )
 
