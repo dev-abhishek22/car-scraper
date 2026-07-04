@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import html
 import re
 from collections.abc import Mapping
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from src.clients.async_client import (
     AsyncExternalHttpClient,
@@ -17,6 +19,13 @@ from src.external.constants.cardekho import (
 from src.logger.logger import logger_service
 
 SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+REDIRECT_STATUS_CODES = {
+    301,
+    302,
+    307,
+    308,
+}
 
 
 class CarDekhoTrimSpecsFeaturesExecutor:
@@ -272,6 +281,73 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         return data
 
+    @staticmethod
+    def _normalize_identity_text(
+        value: Any,
+    ) -> str | None:
+        if not isinstance(value, str):
+            return None
+
+        normalized_value = " ".join(value.strip().casefold().split())
+
+        return normalized_value or None
+
+    @classmethod
+    def _try_parse_positive_integer(
+        cls,
+        value: Any,
+    ) -> int | None:
+        try:
+            return cls._parse_positive_integer(
+                value,
+                field_name="response identity",
+            )
+        except ExternalResponseError:
+            return None
+
+    @staticmethod
+    def _iter_variant_table_rows(
+        variant_table: Any,
+    ) -> list[Mapping[str, Any]]:
+        if not isinstance(
+            variant_table,
+            Mapping,
+        ):
+            return []
+
+        rows: list[Mapping[str, Any]] = []
+
+        variant_list = variant_table.get(
+            "variantList",
+        )
+
+        if isinstance(variant_list, list):
+            for item in variant_list:
+                if isinstance(item, Mapping):
+                    rows.append(item)
+
+        children = variant_table.get(
+            "childs",
+        )
+
+        if isinstance(children, list):
+            for child in children:
+                if not isinstance(child, Mapping):
+                    continue
+
+                child_items = child.get(
+                    "items",
+                )
+
+                if isinstance(child_items, list):
+                    for item in child_items:
+                        if isinstance(item, Mapping):
+                            rows.append(item)
+                else:
+                    rows.append(child)
+
+        return rows
+
     @classmethod
     def _validate_response_identity(
         cls,
@@ -279,45 +355,428 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         data: Mapping[str, Any],
         expected_model_id: int,
         expected_variant_id: int,
+        expected_variant_name: str,
+        expected_variant_slug: str,
     ) -> None:
-        data_layer = data.get("dataLayer")
+        """
+        Validate model and selected-variant identity.
+
+        Cardekho does not consistently provide
+        dataLayer.variant_id_new. For model-level specs
+        responses, variant identity is available through:
+
+        - data.selectedVariant
+        - data.variantTable rows
+        - row.dcbDto.carVariantCentralId
+
+        The response is accepted only when it can be tied
+        to the requested variant. This prevents storing one
+        default variant's specs under every variant ID.
+        """
+
+        model_ids: list[int] = []
+
+        data_layer = data.get(
+            "dataLayer",
+        )
+
+        if isinstance(data_layer, Mapping):
+            model_id = cls._try_parse_positive_integer(
+                data_layer.get(
+                    "model_id_new",
+                )
+            )
+
+            if model_id is not None:
+                model_ids.append(model_id)
+
+        for container_name, field_name in (
+            ("overviewData", "id"),
+            ("overView", "id"),
+            ("DCB", "modelId"),
+        ):
+            container = data.get(
+                container_name,
+            )
+
+            if not isinstance(container, Mapping):
+                continue
+
+            model_id = cls._try_parse_positive_integer(container.get(field_name))
+
+            if model_id is not None:
+                model_ids.append(model_id)
+
+        if not model_ids:
+            raise ExternalResponseError(
+                "Cardekho model-specs API response "
+                "does not contain a usable model ID"
+            )
+
+        if any(model_id != expected_model_id for model_id in model_ids):
+            raise ExternalResponseError(
+                "Cardekho model-specs API returned "
+                "a different model ID: "
+                f"expected={expected_model_id}, "
+                f"found={sorted(set(model_ids))}"
+            )
+
+        data_layer_variant_id: int | None = None
+
+        if isinstance(data_layer, Mapping):
+            data_layer_variant_id = cls._try_parse_positive_integer(
+                data_layer.get(
+                    "variant_id_new",
+                )
+            )
+
+            if (
+                data_layer_variant_id is not None
+                and data_layer_variant_id != expected_variant_id
+            ):
+                raise ExternalResponseError(
+                    "Cardekho model-specs API "
+                    "returned a different variant ID: "
+                    f"expected={expected_variant_id}, "
+                    f"found={data_layer_variant_id}"
+                )
+
+        variant_rows = cls._iter_variant_table_rows(
+            data.get(
+                "variantTable",
+            )
+        )
+
+        matching_row: Mapping[str, Any] | None = None
+
+        for row in variant_rows:
+            row_slug = row.get(
+                "variantSlug",
+            )
+
+            if isinstance(row_slug, str) and row_slug.strip() == expected_variant_slug:
+                matching_row = row
+                break
+
+        if matching_row is None:
+            if data_layer_variant_id == expected_variant_id:
+                return
+
+            raise ExternalResponseError(
+                "Cardekho model-specs API response "
+                "does not contain the requested variant "
+                "in data.variantTable: "
+                f"variant_slug={expected_variant_slug!r}, "
+                f"variant_id={expected_variant_id}"
+            )
+
+        response_variant_ids: list[int] = []
+
+        for raw_id in (
+            matching_row.get("centralId"),
+            matching_row.get("id"),
+        ):
+            parsed_id = cls._try_parse_positive_integer(
+                raw_id,
+            )
+
+            if parsed_id is not None:
+                response_variant_ids.append(parsed_id)
+
+        row_dcb = matching_row.get(
+            "dcbDto",
+        )
+
+        if isinstance(row_dcb, Mapping):
+            dcb_variant_id = cls._try_parse_positive_integer(
+                row_dcb.get(
+                    "carVariantCentralId",
+                )
+            )
+
+            if dcb_variant_id is not None:
+                response_variant_ids.append(
+                    dcb_variant_id,
+                )
+
+        if data_layer_variant_id is not None:
+            response_variant_ids.append(
+                data_layer_variant_id,
+            )
+
+        if response_variant_ids and any(
+            variant_id != expected_variant_id for variant_id in response_variant_ids
+        ):
+            raise ExternalResponseError(
+                "Cardekho model-specs API returned "
+                "a different variant ID for the "
+                "requested variant slug: "
+                f"expected={expected_variant_id}, "
+                f"found={sorted(set(response_variant_ids))}, "
+                f"variant_slug={expected_variant_slug!r}"
+            )
+
+        selected_variant = cls._normalize_identity_text(
+            data.get(
+                "selectedVariant",
+            )
+        )
+
+        row_identity_values: list[str] = []
+
+        for value in (
+            matching_row.get("carVariantId"),
+            matching_row.get("displayCarVariantId"),
+        ):
+            normalized_value = cls._normalize_identity_text(value)
+
+            if normalized_value is not None:
+                row_identity_values.append(
+                    normalized_value,
+                )
+
+        if isinstance(row_dcb, Mapping):
+            normalized_dcb_name = cls._normalize_identity_text(
+                row_dcb.get(
+                    "carVariantId",
+                )
+            )
+
+            if normalized_dcb_name is not None:
+                row_identity_values.append(
+                    normalized_dcb_name,
+                )
+
+        expected_variant_name_normalized = cls._normalize_identity_text(
+            expected_variant_name,
+        )
+
+        if expected_variant_name_normalized is not None:
+            row_identity_values.append(
+                expected_variant_name_normalized,
+            )
+
+        if selected_variant is not None:
+            if row_identity_values and selected_variant not in set(row_identity_values):
+                raise ExternalResponseError(
+                    "Cardekho model-specs API returned "
+                    "specifications for a different "
+                    "selected variant: "
+                    f"expected_slug="
+                    f"{expected_variant_slug!r}, "
+                    f"selected_variant="
+                    f"{data.get('selectedVariant')!r}"
+                )
+
+        elif data_layer_variant_id is None:
+            raise ExternalResponseError(
+                "Cardekho model-specs API response "
+                "does not provide enough selected-variant "
+                "identity to safely store specifications: "
+                f"variant_slug={expected_variant_slug!r}, "
+                f"variant_id={expected_variant_id}"
+            )
+
+    @classmethod
+    def _parse_redirect_request(
+        cls,
+        *,
+        data: Mapping[str, Any],
+    ) -> dict[str, str] | None:
+        redirect = data.get(
+            "redirect",
+        )
 
         if not isinstance(
-            data_layer,
+            redirect,
+            Mapping,
+        ):
+            return None
+
+        status_code = redirect.get(
+            "statusCode",
+        )
+
+        if status_code is not None and status_code not in REDIRECT_STATUS_CODES:
+            return None
+
+        redirect_url = redirect.get(
+            "redirectURL",
+        )
+
+        if not isinstance(
+            redirect_url,
+            str,
+        ):
+            return None
+
+        normalized_redirect_url = html.unescape(
+            redirect_url,
+        ).strip()
+
+        if not normalized_redirect_url:
+            return None
+
+        split_result = urlsplit(
+            normalized_redirect_url,
+        )
+
+        if split_result.scheme or split_result.netloc:
+            return None
+
+        redirect_path = unquote(
+            split_result.path,
+        )
+
+        if not redirect_path.startswith("/"):
+            redirect_path = f"/{redirect_path}"
+
+        request_url = redirect_path.lstrip("/")
+
+        if split_result.query:
+            request_url = f"{request_url}?" f"{split_result.query}"
+
+        return {
+            "url": request_url,
+            "refererPath": redirect_path,
+        }
+
+    async def _fetch_response(
+        self,
+        *,
+        brand_slug: str,
+        model_slug: str,
+        variant_slug: str,
+        request_url: str,
+        referer_path: str,
+    ) -> Mapping[str, Any]:
+        endpoint = CARDEKHO_MODEL_SPECS
+
+        if endpoint.method != "GET":
+            raise RuntimeError(
+                "Unexpected HTTP method "
+                "configured for the Cardekho "
+                "model-specs API"
+            )
+
+        normalized_referer_path = referer_path
+
+        if not normalized_referer_path.startswith("/"):
+            normalized_referer_path = f"/{normalized_referer_path}"
+
+        response_data = await self._client.get_json(
+            endpoint=endpoint.path,
+            params={
+                **endpoint.default_params,
+                "brandSlug": brand_slug,
+                "modelSlug": model_slug,
+                "variantSlug": variant_slug,
+                "url": request_url,
+            },
+            headers={
+                **endpoint.default_headers,
+                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
+            },
+        )
+
+        if not isinstance(
+            response_data,
             Mapping,
         ):
             raise ExternalResponseError(
                 "Cardekho model-specs API "
+                "returned an invalid response. "
+                "Expected a JSON object"
+            )
+
+        return response_data
+
+    async def _fetch_data_with_redirect(
+        self,
+        *,
+        brand_slug: str,
+        model_slug: str,
+        variant_slug: str,
+    ) -> Mapping[str, Any]:
+        initial_request_url = f"{brand_slug}/" f"{model_slug}/specs"
+
+        initial_referer_path = f"/{initial_request_url}"
+
+        response_data = await self._fetch_response(
+            brand_slug=brand_slug,
+            model_slug=model_slug,
+            variant_slug=variant_slug,
+            request_url=initial_request_url,
+            referer_path=initial_referer_path,
+        )
+
+        data = self._validate_response_envelope(
+            response_data,
+        )
+
+        if isinstance(
+            data.get("specs"),
+            Mapping,
+        ):
+            return data
+
+        redirect_request = self._parse_redirect_request(
+            data=data,
+        )
+
+        if redirect_request is None:
+            data_keys = sorted(str(key) for key in data.keys())
+
+            raise ExternalResponseError(
+                "Cardekho model-specs API "
                 "response does not contain "
-                "a valid data.dataLayer object"
+                "specifications or a usable redirect: "
+                f"brand={brand_slug!r}, "
+                f"model={model_slug!r}, "
+                f"variant={variant_slug!r}, "
+                f"data_keys={data_keys}"
             )
 
-        response_model_id = cls._parse_positive_integer(
-            data_layer.get("model_id_new"),
-            field_name=("data.dataLayer." "model_id_new"),
+        redirected_response_data = await self._fetch_response(
+            brand_slug=brand_slug,
+            model_slug=model_slug,
+            variant_slug=variant_slug,
+            request_url=redirect_request["url"],
+            referer_path=(redirect_request["refererPath"]),
         )
 
-        response_variant_id = cls._parse_positive_integer(
-            data_layer.get("variant_id_new"),
-            field_name=("data.dataLayer." "variant_id_new"),
+        redirected_data = self._validate_response_envelope(
+            redirected_response_data,
         )
 
-        if response_model_id != expected_model_id:
-            raise ExternalResponseError(
-                "Cardekho model-specs API "
-                "returned a different model ID: "
-                f"expected={expected_model_id}, "
-                f"found={response_model_id}"
+        if not isinstance(
+            redirected_data.get("specs"),
+            Mapping,
+        ):
+            second_redirect = self._parse_redirect_request(
+                data=redirected_data,
             )
 
-        if response_variant_id != expected_variant_id:
+            data_keys = sorted(str(key) for key in redirected_data.keys())
+
+            second_redirect_url = (
+                second_redirect["refererPath"] if second_redirect is not None else None
+            )
+
             raise ExternalResponseError(
                 "Cardekho model-specs API "
-                "returned a different variant "
-                "ID: "
-                f"expected={expected_variant_id}, "
-                f"found={response_variant_id}"
+                "response does not contain "
+                "a valid data.specs object "
+                "after following one redirect: "
+                f"brand={brand_slug!r}, "
+                f"model={model_slug!r}, "
+                f"variant={variant_slug!r}, "
+                f"data_keys={data_keys}, "
+                f"redirect_url="
+                f"{second_redirect_url!r}"
             )
+
+        return redirected_data
 
     @staticmethod
     def _extract_specs(
@@ -407,30 +866,6 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         variant_slug = validated_record["variantSlug"]
 
-        endpoint = CARDEKHO_MODEL_SPECS
-
-        if endpoint.method != "GET":
-            raise RuntimeError(
-                "Unexpected HTTP method "
-                "configured for the Cardekho "
-                "model-specs API"
-            )
-
-        request_url = f"{brand_slug}/" f"{model_slug}/specs"
-
-        params: dict[str, Any] = {
-            **endpoint.default_params,
-            "brandSlug": brand_slug,
-            "modelSlug": model_slug,
-            "variantSlug": variant_slug,
-            "url": request_url,
-        }
-
-        headers = {
-            **endpoint.default_headers,
-            "Referer": (f"{CARDEKHO_BASE_URL}/" f"{request_url}"),
-        }
-
         logger_service.info(
             (
                 "Scraping Cardekho trim "
@@ -445,21 +880,23 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             context=("CarDekhoTrimSpecsFeaturesExecutor"),
         )
 
-        response_data = await self._client.get_json(
-            endpoint=endpoint.path,
-            params=params,
-            headers=headers,
+        data = await self._fetch_data_with_redirect(
+            brand_slug=brand_slug,
+            model_slug=model_slug,
+            variant_slug=variant_slug,
         )
 
-        data = self._validate_response_envelope(response_data)
+        result = self._extract_specs(
+            data,
+        )
 
         self._validate_response_identity(
             data=data,
             expected_model_id=model_id,
             expected_variant_id=variant_id,
+            expected_variant_name=variant_name,
+            expected_variant_slug=variant_slug,
         )
-
-        result = self._extract_specs(data)
 
         logger_service.info(
             (
