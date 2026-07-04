@@ -228,7 +228,9 @@ class CarDekhoCarVariant(BaseModel):
         cls,
         value: Any,
     ) -> str | None:
-        return _normalize_optional_slug(
+        # Keep Cardekho's slug as supplied. Only reject non-string values
+        # and convert an empty string to None.
+        return _normalize_optional_string(
             value,
             field_name="variant.slug",
         )
@@ -449,7 +451,7 @@ class CarDekhoOldGenerationComparison(BaseModel):
     ) -> str | None:
         return _normalize_optional_slug(
             value,
-            field_name=("old_generation_comparison.brandSlug"),
+            field_name="old_generation_comparison.brandSlug",
         )
 
     @field_validator(
@@ -463,7 +465,7 @@ class CarDekhoOldGenerationComparison(BaseModel):
     ) -> str | None:
         return _normalize_optional_slug(
             value,
-            field_name=("old_generation_comparison.modelSlug"),
+            field_name="old_generation_comparison.modelSlug",
         )
 
     @field_validator(
@@ -477,7 +479,7 @@ class CarDekhoOldGenerationComparison(BaseModel):
     ) -> str | None:
         return _normalize_optional_slug(
             value,
-            field_name=("old_generation_comparison.carSlug"),
+            field_name="old_generation_comparison.carSlug",
         )
 
     @model_validator(
@@ -766,10 +768,8 @@ class CarDekhoCar(BaseModel):
             raise ValueError(
                 "sourceModelDocumentId does not "
                 "match the model ID: "
-                f"expected="
-                f"{expected_source_document_id!r}, "
-                f"found="
-                f"{self.source_model_document_id!r}"
+                f"expected={expected_source_document_id!r}, "
+                f"found={self.source_model_document_id!r}"
             )
 
         expected_car_slug = f"{self.brand_slug}-{self.slug}"
@@ -826,10 +826,12 @@ class CarDekhoCar(BaseModel):
             )
 
         self._validate_unique_variants()
+
         self._validate_unique_related_cars(
             cars=self.compare_with,
             field_name="compareWith",
         )
+
         self._validate_unique_related_cars(
             cars=self.similar_cars,
             field_name="similarCars",
@@ -968,7 +970,7 @@ class CarDekhoCar(BaseModel):
 
         expected_launch_date = _normalize_optional_string(
             model.get("expectedLaunchDate"),
-            field_name=("model.expectedLaunchDate"),
+            field_name="model.expectedLaunchDate",
         )
 
         if (
@@ -990,7 +992,7 @@ class CarDekhoCar(BaseModel):
 
         normalized_source_model_run_id = _normalize_optional_string(
             resolved_source_model_run_id,
-            field_name=("source_model_run_id"),
+            field_name="source_model_run_id",
         )
 
         source_model_document_id = model.get("_id")
@@ -1002,7 +1004,7 @@ class CarDekhoCar(BaseModel):
 
         normalized_source_model_document_id = _validate_non_empty_string(
             source_model_document_id,
-            field_name=("model._id"),
+            field_name="model._id",
         )
 
         overview = car_data.get("overview")
@@ -1069,7 +1071,7 @@ class CarDekhoCar(BaseModel):
             modelName=model_name,
             modelStatus=model_status,
             isUpcoming=is_upcoming,
-            expectedLaunchDate=(expected_launch_date),
+            expectedLaunchDate=expected_launch_date,
             overview=dict(overview),
             totalVariants=total_variants,
             variants=raw_variants,
@@ -1077,14 +1079,12 @@ class CarDekhoCar(BaseModel):
             compareWith=raw_compare_with,
             totalSimilarCars=total_similar_cars,
             similarCars=raw_similar_cars,
-            oldGenerationComparison=(
-                car_data.get(
-                    "oldGenerationComparison",
-                )
+            oldGenerationComparison=car_data.get(
+                "oldGenerationComparison",
             ),
             lastRunId=normalized_run_id,
-            sourceModelRunId=(normalized_source_model_run_id),
-            sourceModelDocumentId=(normalized_source_model_document_id),
+            sourceModelRunId=normalized_source_model_run_id,
+            sourceModelDocumentId=normalized_source_model_document_id,
             scrapedAt=current_time,
             createdAt=initial_created_at,
             updatedAt=current_time,

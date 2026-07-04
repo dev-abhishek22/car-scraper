@@ -696,7 +696,8 @@ class CarDekhoCarsExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured for the CarDekho model-overview API"
+                "Unexpected HTTP method configured for "
+                "the CarDekho model-overview API"
             )
 
         normalized_referer_path = referer_path
@@ -714,7 +715,7 @@ class CarDekhoCarsExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}{normalized_referer_path}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
             },
         )
 
@@ -789,13 +790,15 @@ class CarDekhoCarsExecutor:
             )
 
         redirected_response_data = await self._fetch_response(
-            request_brand_slug=(redirect_request["brandSlug"]),
-            request_model_slug=(redirect_request["modelSlug"]),
+            request_brand_slug=redirect_request["brandSlug"],
+            request_model_slug=redirect_request["modelSlug"],
             request_url=redirect_request["url"],
-            referer_path=(redirect_request["refererPath"]),
+            referer_path=redirect_request["refererPath"],
         )
 
-        redirected_data = self._validate_response_envelope(redirected_response_data)
+        redirected_data = self._validate_response_envelope(
+            redirected_response_data,
+        )
 
         redirected_overview = redirected_data.get("overView")
 
@@ -1040,7 +1043,10 @@ class CarDekhoCarsExecutor:
                 raw_variant.get("centralId"),
             )
 
-            variant_slug = cls._normalize_optional_slug(
+            # Keep Cardekho's variantSlug as returned.
+            # Do not apply the strict model-slug regex because Cardekho
+            # legitimately uses values such as kia-seltos-hte-(o).
+            variant_slug = cls._normalize_optional_string(
                 raw_variant.get("variantSlug"),
             )
 
@@ -1287,7 +1293,7 @@ class CarDekhoCarsExecutor:
 
             target_car_slug = cls._extract_other_car_slug(
                 comparison_url=comparison_url,
-                current_car_slug=(current_car_slug),
+                current_car_slug=current_car_slug,
             )
 
             if target_car_slug is None:
@@ -1447,7 +1453,7 @@ class CarDekhoCarsExecutor:
                 car_slug=old_car_slug,
                 model_name=model_name,
                 short_name=model_name,
-                preferred_brand_slug=(current_brand_slug),
+                preferred_brand_slug=current_brand_slug,
             )
 
         if old_car_slug is None and model_name is not None:
@@ -1466,7 +1472,6 @@ class CarDekhoCarsExecutor:
                     old_model_slug = normalized_model_name_slug
 
                 old_brand_slug = current_brand_slug
-
                 old_car_slug = f"{old_brand_slug}-{old_model_slug}"
 
         return {
@@ -1562,5 +1567,5 @@ class CarDekhoCarsExecutor:
             "compareWith": comparisons,
             "totalSimilarCars": len(similar_cars),
             "similarCars": similar_cars,
-            "oldGenerationComparison": (old_generation_comparison),
+            "oldGenerationComparison": old_generation_comparison,
         }
