@@ -109,6 +109,11 @@ class CarWaleTrimSpecsFeatures(BaseModel):
         alias="trimDetail",
     )
 
+    specs_features: Any = Field(
+        default=None,
+        alias="specsFeatures",
+    )
+
     specifications: Any = None
 
     features: Any = None
@@ -366,6 +371,7 @@ class CarWaleTrimSpecsFeatures(BaseModel):
             trimDetail=response_data.get("trimDetail"),
             specifications=response_data.get("specifications"),
             features=response_data.get("features"),
+            specsFeatures=response_data.get("specsFeatures"),
             sourceCarDocumentId=(source_car_document_id),
             sourceCarRunId=(source_car_run_id),
             lastRunId=normalized_run_id,

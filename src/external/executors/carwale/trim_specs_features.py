@@ -207,6 +207,7 @@ class CarWaleTrimSpecsFeaturesExecutor:
             "modelMaskingName": (model_masking_name),
             "trimMaskingName": (trim_masking_name),
             "versionId": version_id,
+            "platformId": 1,
         }
 
         headers = {
@@ -259,6 +260,7 @@ class CarWaleTrimSpecsFeaturesExecutor:
             "trimDetail": response_data.get("trimDetail"),
             "specifications": response_data.get("specifications"),
             "features": response_data.get("features"),
+            "specsFeatures": response_data.get("specsFeaturesMaster"),
         }
 
         logger_service.info(
