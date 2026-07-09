@@ -839,80 +839,87 @@ class CarDekhoCarsExecutor:
         expected_model_slug: str,
         expected_model_status: str,
     ) -> None:
-        response_model_ids: list[int] = []
+        expected_car_slug = f"{expected_brand_slug}-{expected_model_slug}"
 
-        data_model_id = data.get("modelId")
-
-        if data_model_id is not None:
-            try:
-                response_model_ids.append(
-                    cls._coerce_positive_integer(
-                        data_model_id,
-                        field_name="data.modelId",
-                    )
-                )
-            except ValueError as error:
-                raise ExternalResponseError(str(error)) from error
-
-        overview_model_id = overview.get("id")
-
-        if overview_model_id is not None:
-            try:
-                response_model_ids.append(
-                    cls._coerce_positive_integer(
-                        overview_model_id,
-                        field_name="data.overView.id",
-                    )
-                )
-            except ValueError as error:
-                raise ExternalResponseError(str(error)) from error
-
-        if not response_model_ids:
-            raise ExternalResponseError(
-                "CarDekho model-overview API response "
-                "does not contain a usable model ID"
-            )
-
-        if any(
-            response_model_id != expected_model_id
-            for response_model_id in response_model_ids
-        ):
-            raise ExternalResponseError(
-                "CarDekho model-overview API returned "
-                "a different model ID: "
-                f"expected={expected_model_id}, "
-                f"found={response_model_ids}"
-            )
+        response_model_slug_url = cls._normalize_optional_slug(
+            overview.get("modelSlugUrl"),
+        ) or cls._normalize_optional_slug(
+            data.get("modelSlugUrl"),
+        )
 
         response_brand_slug = cls._normalize_optional_slug(
             overview.get("brandSlug"),
         )
 
-        if (
-            response_brand_slug is not None
-            and response_brand_slug != expected_brand_slug
-        ):
-            raise ExternalResponseError(
-                "CarDekho model-overview API returned "
-                "a different brand slug: "
-                f"expected={expected_brand_slug!r}, "
-                f"found={response_brand_slug!r}"
-            )
-
         response_model_slug = cls._normalize_optional_slug(
             overview.get("modelSlug"),
         )
 
-        if (
-            response_model_slug is not None
-            and response_model_slug != expected_model_slug
-        ):
-            raise ExternalResponseError(
-                "CarDekho model-overview API returned "
-                "a different model slug: "
-                f"expected={expected_model_slug!r}, "
-                f"found={response_model_slug!r}"
-            )
+        if response_model_slug_url is not None:
+            accepted_slug_urls = {
+                expected_car_slug,
+                expected_model_slug,
+            }
+
+            if response_model_slug_url not in accepted_slug_urls:
+                raise ExternalResponseError(
+                    "CarDekho model-overview API returned "
+                    "a different modelSlugUrl: "
+                    f"expected_one_of={sorted(accepted_slug_urls)!r}, "
+                    f"found={response_model_slug_url!r}"
+                )
+
+        else:
+            if (
+                response_brand_slug is not None
+                and response_brand_slug != expected_brand_slug
+            ):
+                raise ExternalResponseError(
+                    "CarDekho model-overview API returned "
+                    "a different brand slug: "
+                    f"expected={expected_brand_slug!r}, "
+                    f"found={response_brand_slug!r}"
+                )
+
+            if (
+                response_model_slug is not None
+                and response_model_slug != expected_model_slug
+            ):
+                raise ExternalResponseError(
+                    "CarDekho model-overview API returned "
+                    "a different model slug: "
+                    f"expected={expected_model_slug!r}, "
+                    f"found={response_model_slug!r}"
+                )
+
+            if response_brand_slug is None and response_model_slug is None:
+                data_model_id = cls._normalize_optional_positive_integer(
+                    data.get("modelId"),
+                )
+
+                overview_model_id = cls._normalize_optional_positive_integer(
+                    overview.get("id"),
+                )
+
+                response_model_ids = [
+                    model_id
+                    for model_id in (
+                        data_model_id,
+                        overview_model_id,
+                    )
+                    if model_id is not None
+                ]
+
+                if response_model_ids and all(
+                    response_model_id != expected_model_id
+                    for response_model_id in response_model_ids
+                ):
+                    raise ExternalResponseError(
+                        "CarDekho model-overview API returned "
+                        "a different model ID and no usable slug identity: "
+                        f"expected={expected_model_id}, "
+                        f"found={response_model_ids}"
+                    )
 
         response_model_status = cls._normalize_api_model_status(
             overview.get("modelStatus"),

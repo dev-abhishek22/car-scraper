@@ -354,27 +354,11 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         expected_variant_name: str,
         expected_variant_slug: str,
     ) -> None:
-        """
-        Validate model and selected-variant identity.
-
-        Cardekho does not consistently provide
-        dataLayer.variant_id_new. For model-level specs
-        responses, variant identity is available through:
-
-        - data.selectedVariant
-        - data.variantTable rows
-        - row.dcbDto.carVariantCentralId
-
-        The response is accepted only when it can be tied
-        to the requested variant. This prevents storing one
-        default variant's specs under every variant ID.
-        """
-
-        model_ids: list[int] = []
-
         data_layer = data.get(
             "dataLayer",
         )
+
+        model_ids: list[int] = []
 
         if isinstance(data_layer, Mapping):
             model_id = cls._try_parse_positive_integer(
@@ -402,19 +386,6 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
             if model_id is not None:
                 model_ids.append(model_id)
-
-        if not model_ids:
-            raise ExternalResponseError(
-                "Cardekho model-specs API response does not contain a usable model ID"
-            )
-
-        if any(model_id != expected_model_id for model_id in model_ids):
-            raise ExternalResponseError(
-                "Cardekho model-specs API returned "
-                "a different model ID: "
-                f"expected={expected_model_id}, "
-                f"found={sorted(set(model_ids))}"
-            )
 
         data_layer_variant_id: int | None = None
 
@@ -456,6 +427,18 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         if matching_row is None:
             if data_layer_variant_id == expected_variant_id:
                 return
+
+            if model_ids and expected_model_id not in set(model_ids):
+                logger_service.info(
+                    (
+                        "Ignoring Cardekho model-specs model ID mismatch "
+                        "because discontinued model IDs may be generated: "
+                        f"expected_model_id={expected_model_id}, "
+                        f"found_model_ids={sorted(set(model_ids))}, "
+                        f"variant_slug={expected_variant_slug!r}"
+                    ),
+                    context=("CarDekhoTrimSpecsFeaturesExecutor"),
+                )
 
             raise ExternalResponseError(
                 "Cardekho model-specs API response "
@@ -564,12 +547,30 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 )
 
         elif data_layer_variant_id is None:
+            if response_variant_ids and expected_variant_id in set(
+                response_variant_ids
+            ):
+                return
+
             raise ExternalResponseError(
                 "Cardekho model-specs API response "
                 "does not provide enough selected-variant "
                 "identity to safely store specifications: "
                 f"variant_slug={expected_variant_slug!r}, "
                 f"variant_id={expected_variant_id}"
+            )
+
+        if model_ids and expected_model_id not in set(model_ids):
+            logger_service.info(
+                (
+                    "Accepted Cardekho model-specs response by variant identity "
+                    "and ignored discontinued/generated model ID mismatch: "
+                    f"expected_model_id={expected_model_id}, "
+                    f"found_model_ids={sorted(set(model_ids))}, "
+                    f"variant_id={expected_variant_id}, "
+                    f"variant_slug={expected_variant_slug!r}"
+                ),
+                context=("CarDekhoTrimSpecsFeaturesExecutor"),
             )
 
     @classmethod
