@@ -46,6 +46,9 @@ from src.cli.cleanup_cli import (
 from src.cli.mongodb_cli import (
     add_mongodb_indexes_command,
 )
+from src.cli.goodreturns.fuel_graph_cli import (
+    add_goodreturns_fuel_graph_prices_command,
+)
 
 CommandHandler = Callable[
     [argparse.Namespace],
@@ -118,6 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_cardekho_trim_specs_features_command(
+        subparsers=subparsers,
+    )
+
+    add_goodreturns_fuel_graph_prices_command(
         subparsers=subparsers,
     )
 

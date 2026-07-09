@@ -67,7 +67,7 @@ class CarDekhoTrimSpecsFeaturesRepository:
             )
             or value <= 0
         ):
-            raise ValueError(f"{field_name} must be a " "positive integer")
+            raise ValueError(f"{field_name} must be a positive integer")
 
         return value
 

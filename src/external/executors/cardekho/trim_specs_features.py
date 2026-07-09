@@ -65,7 +65,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             )
             or value <= 0
         ):
-            raise ValueError(f"{field_name} must be a " "positive integer")
+            raise ValueError(f"{field_name} must be a positive integer")
 
         return value
 
@@ -79,7 +79,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             value,
             bool,
         ):
-            raise ExternalResponseError(f"{field_name} must be a " "positive integer")
+            raise ExternalResponseError(f"{field_name} must be a positive integer")
 
         if isinstance(
             value,
@@ -97,10 +97,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             normalized_value = int(value.strip())
 
         else:
-            raise ExternalResponseError(f"{field_name} must be a " "positive integer")
+            raise ExternalResponseError(f"{field_name} must be a positive integer")
 
         if normalized_value <= 0:
-            raise ExternalResponseError(f"{field_name} must be a " "positive integer")
+            raise ExternalResponseError(f"{field_name} must be a positive integer")
 
         return normalized_value
 
@@ -137,9 +137,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid "
-                f"characters: "
-                f"{normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value
@@ -161,7 +159,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             variant,
             Mapping,
         ):
-            raise ValueError("variant_record.variant must " "be an object")
+            raise ValueError("variant_record.variant must be an object")
 
         return {
             "brandId": (
@@ -232,7 +230,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if response_status is False:
             raise ExternalResponseError(
-                "Cardekho model-specs API " "returned status=false"
+                "Cardekho model-specs API returned status=false"
             )
 
         response_status_code = response_data.get("statusCode")
@@ -274,9 +272,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "Cardekho model-specs API "
-                "response does not contain "
-                "a valid data object"
+                "Cardekho model-specs API response does not contain a valid data object"
             )
 
         return data
@@ -409,8 +405,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if not model_ids:
             raise ExternalResponseError(
-                "Cardekho model-specs API response "
-                "does not contain a usable model ID"
+                "Cardekho model-specs API response does not contain a usable model ID"
             )
 
         if any(model_id != expected_model_id for model_id in model_ids):
@@ -634,7 +629,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         request_url = redirect_path.lstrip("/")
 
         if split_result.query:
-            request_url = f"{request_url}?" f"{split_result.query}"
+            request_url = f"{request_url}?{split_result.query}"
 
         return {
             "url": request_url,
@@ -654,9 +649,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method "
-                "configured for the Cardekho "
-                "model-specs API"
+                "Unexpected HTTP method configured for the Cardekho model-specs API"
             )
 
         normalized_referer_path = referer_path
@@ -675,7 +668,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}{normalized_referer_path}"),
             },
         )
 
@@ -698,7 +691,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         model_slug: str,
         variant_slug: str,
     ) -> Mapping[str, Any]:
-        initial_request_url = f"{brand_slug}/" f"{model_slug}/specs"
+        initial_request_url = f"{brand_slug}/{model_slug}/specs"
 
         initial_referer_path = f"/{initial_request_url}"
 

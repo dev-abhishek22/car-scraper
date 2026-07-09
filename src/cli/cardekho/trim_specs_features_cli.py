@@ -70,9 +70,7 @@ def add_cardekho_trim_specs_features_command(
     parser = subparsers.add_parser(
         "cardekho-trim-specs-features",
         help=(
-            "Fetch Cardekho specifications "
-            "and features for variants stored "
-            "in MongoDB"
+            "Fetch Cardekho specifications and features for variants stored in MongoDB"
         ),
         description=(
             "Read variants from the "
@@ -104,11 +102,7 @@ def add_cardekho_trim_specs_features_command(
         type=str,
         default=None,
         metavar="MODEL_SLUG",
-        help=(
-            "Process one model, for example "
-            "'brezza'. This option requires "
-            "--brand."
-        ),
+        help=("Process one model, for example 'brezza'. This option requires --brand."),
     )
 
     parser.add_argument(
@@ -116,7 +110,7 @@ def add_cardekho_trim_specs_features_command(
         type=int,
         default=None,
         metavar="MODEL_ID",
-        help=("Process one Cardekho model ID, " "for example 3289."),
+        help=("Process one Cardekho model ID, for example 3289."),
     )
 
     parser.add_argument(
@@ -137,7 +131,7 @@ def add_cardekho_trim_specs_features_command(
         type=int,
         default=None,
         metavar="VARIANT_ID",
-        help=("Process one Cardekho variant ID, " "for example 10387."),
+        help=("Process one Cardekho variant ID, for example 10387."),
     )
 
     parser.add_argument(
@@ -145,7 +139,7 @@ def add_cardekho_trim_specs_features_command(
         type=int,
         default=5,
         metavar="COUNT",
-        help=("Number of concurrent variant " "workers. Default: 5"),
+        help=("Number of concurrent variant workers. Default: 5"),
     )
 
     parser.add_argument(
@@ -165,7 +159,7 @@ def add_cardekho_trim_specs_features_command(
         type=int,
         default=None,
         metavar="COUNT",
-        help=("Optional maximum number of " "variants to process."),
+        help=("Optional maximum number of variants to process."),
     )
 
     parser.add_argument(
@@ -211,13 +205,13 @@ def add_cardekho_trim_specs_features_command(
         type=str,
         default=None,
         metavar="RUN_ID",
-        help=("Resume an existing Cardekho trim " "specs/features scraper run."),
+        help=("Resume an existing Cardekho trim specs/features scraper run."),
     )
 
     parser.add_argument(
         "--failed-only",
         action="store_true",
-        help=("When resuming, process only failed " "jobs. Requires --resume-run-id."),
+        help=("When resuming, process only failed jobs. Requires --resume-run-id."),
     )
 
     parser.add_argument(

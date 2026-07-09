@@ -310,9 +310,7 @@ async def iter_cardekho_trim_specs_features_variants(
     if normalized_variant is not None and (
         normalized_brand is None or normalized_model is None
     ):
-        raise ValueError(
-            "selected_variant requires " "selected_brand and selected_model"
-        )
+        raise ValueError("selected_variant requires selected_brand and selected_model")
 
     resolved_model_id = normalized_model_id
 
@@ -489,9 +487,7 @@ async def load_cardekho_trim_specs_features_variants(
 
     if not variant_records:
         raise LookupError(
-            "No Cardekho variants matched "
-            "the provided trim "
-            "specs/features filters."
+            "No Cardekho variants matched the provided trim specs/features filters."
         )
 
     return variant_records

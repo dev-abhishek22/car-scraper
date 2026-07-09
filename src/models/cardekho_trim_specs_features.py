@@ -229,7 +229,7 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid " f"characters: {normalized_value!r}"
+                f"{field_name} contains invalid characters: {normalized_value!r}"
             )
 
         return normalized_value

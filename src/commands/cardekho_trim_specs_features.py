@@ -386,7 +386,7 @@ async def _cancel_claimed_job_safely(
             await scraper_job_repository.mark_cancelled(
                 run_id=run_id,
                 job_id=job_id,
-                reason=("Cardekho trim " "specs/features command " "interrupted"),
+                reason=("Cardekho trim specs/features command interrupted"),
             )
 
     except Exception as tracking_error:
@@ -498,13 +498,13 @@ async def run_cardekho_trim_specs_features(
         retry_terminal_failures,
         bool,
     ):
-        raise ValueError("retry_terminal_failures must " "be a boolean")
+        raise ValueError("retry_terminal_failures must be a boolean")
 
     if failed_only and normalized_resume_run_id is None:
         raise ValueError("failed_only requires resume_run_id")
 
     if retry_terminal_failures and normalized_resume_run_id is None:
-        raise ValueError("retry_terminal_failures requires " "resume_run_id")
+        raise ValueError("retry_terminal_failures requires resume_run_id")
 
     mode = _resolve_mode(
         brand=normalized_brand,
@@ -572,13 +572,13 @@ async def run_cardekho_trim_specs_features(
             )
 
             if existing_run.source != SOURCE_NAME:
-                raise ValueError("Run source does not match " f"{SOURCE_NAME!r}")
+                raise ValueError(f"Run source does not match {SOURCE_NAME!r}")
 
             if existing_run.resource != RESOURCE_NAME:
-                raise ValueError("Run resource does not match " f"{RESOURCE_NAME!r}")
+                raise ValueError(f"Run resource does not match {RESOURCE_NAME!r}")
 
             if existing_run.command != COMMAND_NAME:
-                raise ValueError("Run command does not match " f"{COMMAND_NAME!r}")
+                raise ValueError(f"Run command does not match {COMMAND_NAME!r}")
 
             run_id = existing_run.run_id
 
@@ -607,7 +607,7 @@ async def run_cardekho_trim_specs_features(
                 current_counts.pending > 0 or current_counts.running > 0
             ):
                 raise ValueError(
-                    "failed_only cannot run while " "pending or running jobs exist"
+                    "failed_only cannot run while pending or running jobs exist"
                 )
 
             requeued_jobs = await scraper_job_repository.requeue_failed(
@@ -726,9 +726,9 @@ async def run_cardekho_trim_specs_features(
                     await scraper_job_repository.mark_skipped(
                         run_id=run_id,
                         job_id=job.job_id,
-                        reason=("Trim specs/features " "document already exists"),
+                        reason=("Trim specs/features document already exists"),
                         result={
-                            "documentId": ("variant:" f"{job_variant_id}"),
+                            "documentId": (f"variant:{job_variant_id}"),
                             "variantId": (job_variant_id),
                         },
                     )
@@ -779,9 +779,7 @@ async def run_cardekho_trim_specs_features(
                 async def worker(
                     worker_number: int,
                 ) -> None:
-                    worker_id = (
-                        "cardekho-trim-" "specs-features-worker-" f"{worker_number}"
-                    )
+                    worker_id = f"cardekho-trim-specs-features-worker-{worker_number}"
 
                     while True:
                         claimed_job = await scraper_job_repository.claim_next(
@@ -809,9 +807,7 @@ async def run_cardekho_trim_specs_features(
                                 Mapping,
                             ):
                                 raise ValueError(
-                                    "Trim specs/features "
-                                    "job payload must be "
-                                    "an object"
+                                    "Trim specs/features job payload must be an object"
                                 )
 
                             variant_value = payload.get("variant")
@@ -852,15 +848,10 @@ async def run_cardekho_trim_specs_features(
                                     run_id=run_id,
                                     job_id=job_id,
                                     reason=(
-                                        "Trim "
-                                        "specs/features "
-                                        "document already "
-                                        "exists"
+                                        "Trim specs/features document already exists"
                                     ),
                                     result={
-                                        "documentId": (
-                                            "variant:" f"{variant_id_value}"
-                                        ),
+                                        "documentId": (f"variant:{variant_id_value}"),
                                         "variantId": (variant_id_value),
                                     },
                                 )
@@ -873,13 +864,11 @@ async def run_cardekho_trim_specs_features(
                                 variant_record=(payload)
                             )
 
-                            upsert_result = (
-                                await (
-                                    cardekho_trim_specs_features_repository.upsert_one(
-                                        variant_record=(payload),
-                                        response_data=(response_data),
-                                        run_id=run_id,
-                                    )
+                            upsert_result = await (
+                                cardekho_trim_specs_features_repository.upsert_one(
+                                    variant_record=(payload),
+                                    response_data=(response_data),
+                                    run_id=run_id,
                                 )
                             )
 
@@ -951,11 +940,9 @@ async def run_cardekho_trim_specs_features(
                                 retryable_error
                                 and failed_job.attempts < failed_job.max_attempts
                             ):
-                                job_requeued = (
-                                    await (
-                                        scraper_job_repository.requeue_failed(
-                                            run_id=run_id,
-                                        )
+                                job_requeued = await (
+                                    scraper_job_repository.requeue_failed(
+                                        run_id=run_id,
                                     )
                                 )
 
@@ -1006,9 +993,7 @@ async def run_cardekho_trim_specs_features(
                 worker_tasks = [
                     asyncio.create_task(
                         worker(worker_number),
-                        name=(
-                            "cardekho-trim-" "specs-features-worker-" f"{worker_number}"
-                        ),
+                        name=(f"cardekho-trim-specs-features-worker-{worker_number}"),
                     )
                     for worker_number in range(
                         1,
@@ -1119,9 +1104,7 @@ async def run_cardekho_trim_specs_features(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=(
-                        "Cardekho trim " "specs/features command " "interrupted"
-                    ),
+                    stop_reason=("Cardekho trim specs/features command interrupted"),
                 )
 
             except Exception as tracking_error:
@@ -1159,7 +1142,7 @@ async def run_cardekho_trim_specs_features(
                     run_id,
                     progress=progress,
                     error=error,
-                    stop_reason=("Cardekho trim " "specs/features scraping " "failed"),
+                    stop_reason=("Cardekho trim specs/features scraping failed"),
                     stop_http_status=(_extract_http_status(error)),
                 )
 

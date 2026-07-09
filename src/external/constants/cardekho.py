@@ -14,7 +14,7 @@ CARDEKHO_DEFAULT_HEADERS: Final[dict[str, str]] = {
 }
 
 CARDEKHO_CITIES_BUNDLE_URL: Final[str] = (
-    "https://staticcont.cardekho.com/pwa/js/bundle/" "cities.7731e9424bd84181d23f.cjs"
+    "https://staticcont.cardekho.com/pwa/js/bundle/cities.7731e9424bd84181d23f.cjs"
 )
 
 

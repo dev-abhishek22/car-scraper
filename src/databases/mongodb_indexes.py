@@ -73,7 +73,7 @@ async def _create_scraper_run_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_source_resource_" "created_at"),
+                name=("idx_source_resource_created_at"),
             ),
             IndexModel(
                 [
@@ -90,7 +90,7 @@ async def _create_scraper_run_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_resource_status_" "updated_at"),
+                name=("idx_resource_status_updated_at"),
             ),
             IndexModel(
                 [
@@ -990,13 +990,13 @@ async def _create_cardekho_car_indexes(
             IndexModel(
                 [
                     (
-                        "oldGenerationComparison." "carSlug",
+                        "oldGenerationComparison.carSlug",
                         ASCENDING,
                     ),
                 ],
                 name=("idx_old_generation_car_slug"),
                 partialFilterExpression={
-                    ("oldGenerationComparison." "carSlug"): {
+                    ("oldGenerationComparison.carSlug"): {
                         "$type": "string",
                     },
                 },
@@ -1110,7 +1110,7 @@ async def _create_carwale_trim_specs_features_indexes(
                         ASCENDING,
                     ),
                 ],
-                name=("idx_make_model_trim_slug_" "version"),
+                name=("idx_make_model_trim_slug_version"),
             ),
             IndexModel(
                 [
@@ -1136,7 +1136,7 @@ async def _create_carwale_trim_specs_features_indexes(
                         ASCENDING,
                     ),
                 ],
-                name=("idx_source_car_document_" "version"),
+                name=("idx_source_car_document_version"),
             ),
             IndexModel(
                 [
@@ -1149,7 +1149,7 @@ async def _create_carwale_trim_specs_features_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_source_car_run_" "updated_at"),
+                name=("idx_source_car_run_updated_at"),
             ),
             IndexModel(
                 [
@@ -1230,7 +1230,7 @@ async def _create_cardekho_trim_specs_features_indexes(
                         ASCENDING,
                     ),
                 ],
-                name=("idx_brand_model_variant_" "slug"),
+                name=("idx_brand_model_variant_slug"),
             ),
             IndexModel(
                 [
@@ -1260,7 +1260,7 @@ async def _create_cardekho_trim_specs_features_indexes(
                         ASCENDING,
                     ),
                 ],
-                name=("idx_source_car_document_" "variant"),
+                name=("idx_source_car_document_variant"),
             ),
             IndexModel(
                 [
@@ -1273,7 +1273,7 @@ async def _create_cardekho_trim_specs_features_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_source_car_run_" "updated_at"),
+                name=("idx_source_car_run_updated_at"),
             ),
             IndexModel(
                 [
@@ -1725,7 +1725,7 @@ async def _create_carwale_city_price_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_status_retryable_" "failed_at"),
+                name=("idx_status_retryable_failed_at"),
             ),
         ]
     )
@@ -1811,7 +1811,7 @@ async def _create_cardekho_city_price_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_status_price_" "available"),
+                name=("idx_status_price_available"),
             ),
             IndexModel(
                 [
@@ -1941,7 +1941,7 @@ async def _create_cardekho_city_price_indexes(
             IndexModel(
                 [
                     (
-                        "filters." "popularCitiesOnly",
+                        "filters.popularCitiesOnly",
                         ASCENDING,
                     ),
                     (
@@ -1953,7 +1953,7 @@ async def _create_cardekho_city_price_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_popular_status_" "started_at"),
+                name=("idx_popular_status_started_at"),
             ),
             IndexModel(
                 [
@@ -2035,7 +2035,7 @@ async def _create_cardekho_city_price_indexes(
                         DESCENDING,
                     ),
                 ],
-                name=("idx_status_retryable_" "failed_at"),
+                name=("idx_status_retryable_failed_at"),
             ),
             IndexModel(
                 [
@@ -2056,7 +2056,7 @@ async def _create_cardekho_city_price_indexes(
                         ASCENDING,
                     ),
                 ],
-                name=("idx_brand_model_city_" "status"),
+                name=("idx_brand_model_city_status"),
             ),
         ]
     )
@@ -2134,7 +2134,7 @@ async def ensure_mongodb_indexes(
     }
 
     logger_service.info(
-        ("MongoDB indexes initialized: " f"collections=" f"{list(created_indexes)}"),
+        (f"MongoDB indexes initialized: collections={list(created_indexes)}"),
         context="MongoDBIndexes",
     )
 

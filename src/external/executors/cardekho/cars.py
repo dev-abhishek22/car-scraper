@@ -696,8 +696,7 @@ class CarDekhoCarsExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured for "
-                "the CarDekho model-overview API"
+                "Unexpected HTTP method configured for the CarDekho model-overview API"
             )
 
         normalized_referer_path = referer_path
@@ -715,7 +714,7 @@ class CarDekhoCarsExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}{normalized_referer_path}"),
             },
         )
 
