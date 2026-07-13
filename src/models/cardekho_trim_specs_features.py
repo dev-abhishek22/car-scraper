@@ -113,6 +113,11 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
 
     specification: Any = None
 
+    variant_table: Any = Field(
+        default=None,
+        alias="variantTable",
+    )
+
     source_car_document_id: str | None = Field(
         default=None,
         alias="sourceCarDocumentId",
@@ -153,8 +158,10 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
         if self.document_id != expected_document_id:
             raise ValueError(
                 "Cardekho trim specs/features "
-                "document ID does not match variantId: "
-                f"expected={expected_document_id!r}, "
+                "document ID does not match "
+                "variantId: "
+                f"expected="
+                f"{expected_document_id!r}, "
                 f"found={self.document_id!r}"
             )
 
@@ -166,8 +173,18 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
         *,
         field_name: str,
     ) -> int:
-        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-            raise ValueError(f"{field_name} must be a positive integer")
+        if (
+            isinstance(
+                value,
+                bool,
+            )
+            or not isinstance(
+                value,
+                int,
+            )
+            or value <= 0
+        ):
+            raise ValueError(f"{field_name} must be " "a positive integer")
 
         return value
 
@@ -177,7 +194,10 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
         *,
         field_name: str,
     ) -> str:
-        if not isinstance(value, str):
+        if not isinstance(
+            value,
+            str,
+        ):
             raise ValueError(f"{field_name} must be a string")
 
         normalized_value = value.strip()
@@ -197,8 +217,11 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
         if value is None:
             return None
 
-        if not isinstance(value, str):
-            raise ValueError(f"{field_name} must be a string or null")
+        if not isinstance(
+            value,
+            str,
+        ):
+            raise ValueError(f"{field_name} must be " "a string or null")
 
         normalized_value = value.strip()
 
@@ -229,7 +252,7 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid characters: {normalized_value!r}"
+                f"{field_name} contains " "invalid characters: " f"{normalized_value!r}"
             )
 
         return normalized_value
@@ -252,11 +275,17 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
         variant_id: int,
     ) -> str:
         if (
-            isinstance(variant_id, bool)
-            or not isinstance(variant_id, int)
+            isinstance(
+                variant_id,
+                bool,
+            )
+            or not isinstance(
+                variant_id,
+                int,
+            )
             or variant_id <= 0
         ):
-            raise ValueError("variant_id must be a positive integer")
+            raise ValueError("variant_id must be " "a positive integer")
 
         return f"variant:{variant_id}"
 
@@ -287,7 +316,7 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
             variant,
             Mapping,
         ):
-            raise ValueError("variant_record.variant must be an object")
+            raise ValueError("variant_record.variant " "must be an object")
 
         normalized_run_id = cls._validate_non_empty_string(
             run_id,
@@ -331,7 +360,7 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
 
         model_status = cls._normalize_status(
             variant_record.get("modelStatus"),
-            field_name="variant_record.modelStatus",
+            field_name=("variant_record.modelStatus"),
         )
 
         variant_id = cls._validate_positive_integer(
@@ -402,6 +431,7 @@ class CarDekhoTrimSpecsFeatures(BaseModel):
             variantStatus=variant_status,
             featured=response_data.get("featured"),
             specification=response_data.get("specification"),
+            variantTable=response_data.get("variantTable"),
             sourceCarDocumentId=(source_car_document_id),
             sourceCarRunId=(source_car_run_id),
             lastRunId=normalized_run_id,

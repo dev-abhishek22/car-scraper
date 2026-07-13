@@ -30,16 +30,17 @@ REDIRECT_STATUS_CODES = {
 
 class CarDekhoTrimSpecsFeaturesExecutor:
     """
-    Fetch Cardekho specifications and features
-    for one variant.
+    Fetch Cardekho specifications, features,
+    and variant-table information for one variant.
 
-    Only these response sections are returned:
+    These response sections are returned:
 
     - data.specs.featured
     - data.specs.specification
+    - data.variantTable
 
-    Their internal structures are not modified,
-    filtered, or normalized.
+    Every field inside data.variantTable is retained,
+    except dcbDto, which is recursively removed.
     """
 
     def __init__(
@@ -137,7 +138,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if not SLUG_PATTERN.fullmatch(normalized_value):
             raise ValueError(
-                f"{field_name} contains invalid characters: {normalized_value!r}"
+                f"{field_name} contains invalid characters: " f"{normalized_value!r}"
             )
 
         return normalized_value
@@ -165,34 +166,34 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             "brandId": (
                 cls._validate_positive_integer(
                     variant_record.get("brandId"),
-                    field_name=("variant_record.brandId"),
+                    field_name="variant_record.brandId",
                 )
             ),
             "brandName": (
                 cls._validate_non_empty_string(
                     variant_record.get("brandName"),
-                    field_name=("variant_record.brandName"),
+                    field_name="variant_record.brandName",
                 )
             ),
             "brandSlug": cls._validate_slug(
                 variant_record.get("brandSlug"),
-                field_name=("variant_record.brandSlug"),
+                field_name="variant_record.brandSlug",
             ),
             "modelId": (
                 cls._validate_positive_integer(
                     variant_record.get("modelId"),
-                    field_name=("variant_record.modelId"),
+                    field_name="variant_record.modelId",
                 )
             ),
             "modelName": (
                 cls._validate_non_empty_string(
                     variant_record.get("modelName"),
-                    field_name=("variant_record.modelName"),
+                    field_name="variant_record.modelName",
                 )
             ),
             "modelSlug": cls._validate_slug(
                 variant_record.get("modelSlug"),
-                field_name=("variant_record.modelSlug"),
+                field_name="variant_record.modelSlug",
             ),
             "variantId": (
                 cls._validate_positive_integer(
@@ -206,9 +207,11 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                     field_name="variant.name",
                 )
             ),
-            "variantSlug": cls._validate_non_empty_string(
-                variant.get("slug"),
-                field_name="variant.slug",
+            "variantSlug": (
+                cls._validate_non_empty_string(
+                    variant.get("slug"),
+                    field_name="variant.slug",
+                )
             ),
         }
 
@@ -260,8 +263,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         ):
             raise ExternalResponseError(
                 "Cardekho model-specs API "
-                "returned an unsuccessful "
-                "statusCode: "
+                "returned an unsuccessful statusCode: "
                 f"{response_status_code}"
             )
 
@@ -272,7 +274,8 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             Mapping,
         ):
             raise ExternalResponseError(
-                "Cardekho model-specs API response does not contain a valid data object"
+                "Cardekho model-specs API response "
+                "does not contain a valid data object"
             )
 
         return data
@@ -281,7 +284,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
     def _normalize_identity_text(
         value: Any,
     ) -> str | None:
-        if not isinstance(value, str):
+        if not isinstance(
+            value,
+            str,
+        ):
             return None
 
         normalized_value = " ".join(value.strip().casefold().split())
@@ -298,6 +304,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 value,
                 field_name="response identity",
             )
+
         except ExternalResponseError:
             return None
 
@@ -317,28 +324,47 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             "variantList",
         )
 
-        if isinstance(variant_list, list):
+        if isinstance(
+            variant_list,
+            list,
+        ):
             for item in variant_list:
-                if isinstance(item, Mapping):
+                if isinstance(
+                    item,
+                    Mapping,
+                ):
                     rows.append(item)
 
         children = variant_table.get(
             "childs",
         )
 
-        if isinstance(children, list):
+        if isinstance(
+            children,
+            list,
+        ):
             for child in children:
-                if not isinstance(child, Mapping):
+                if not isinstance(
+                    child,
+                    Mapping,
+                ):
                     continue
 
                 child_items = child.get(
                     "items",
                 )
 
-                if isinstance(child_items, list):
+                if isinstance(
+                    child_items,
+                    list,
+                ):
                     for item in child_items:
-                        if isinstance(item, Mapping):
+                        if isinstance(
+                            item,
+                            Mapping,
+                        ):
                             rows.append(item)
+
                 else:
                     rows.append(child)
 
@@ -360,7 +386,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         model_ids: list[int] = []
 
-        if isinstance(data_layer, Mapping):
+        if isinstance(
+            data_layer,
+            Mapping,
+        ):
             model_id = cls._try_parse_positive_integer(
                 data_layer.get(
                     "model_id_new",
@@ -379,7 +408,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 container_name,
             )
 
-            if not isinstance(container, Mapping):
+            if not isinstance(
+                container,
+                Mapping,
+            ):
                 continue
 
             model_id = cls._try_parse_positive_integer(container.get(field_name))
@@ -389,7 +421,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         data_layer_variant_id: int | None = None
 
-        if isinstance(data_layer, Mapping):
+        if isinstance(
+            data_layer,
+            Mapping,
+        ):
             data_layer_variant_id = cls._try_parse_positive_integer(
                 data_layer.get(
                     "variant_id_new",
@@ -420,7 +455,13 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 "variantSlug",
             )
 
-            if isinstance(row_slug, str) and row_slug.strip() == expected_variant_slug:
+            if (
+                isinstance(
+                    row_slug,
+                    str,
+                )
+                and row_slug.strip() == expected_variant_slug
+            ):
                 matching_row = row
                 break
 
@@ -431,20 +472,26 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             if model_ids and expected_model_id not in set(model_ids):
                 logger_service.info(
                     (
-                        "Ignoring Cardekho model-specs model ID mismatch "
-                        "because discontinued model IDs may be generated: "
-                        f"expected_model_id={expected_model_id}, "
-                        f"found_model_ids={sorted(set(model_ids))}, "
-                        f"variant_slug={expected_variant_slug!r}"
+                        "Ignoring Cardekho model-specs "
+                        "model ID mismatch because "
+                        "discontinued model IDs may be "
+                        "generated: "
+                        f"expected_model_id="
+                        f"{expected_model_id}, "
+                        f"found_model_ids="
+                        f"{sorted(set(model_ids))}, "
+                        f"variant_slug="
+                        f"{expected_variant_slug!r}"
                     ),
                     context=("CarDekhoTrimSpecsFeaturesExecutor"),
                 )
 
             raise ExternalResponseError(
                 "Cardekho model-specs API response "
-                "does not contain the requested variant "
-                "in data.variantTable: "
-                f"variant_slug={expected_variant_slug!r}, "
+                "does not contain the requested "
+                "variant in data.variantTable: "
+                f"variant_slug="
+                f"{expected_variant_slug!r}, "
                 f"variant_id={expected_variant_id}"
             )
 
@@ -459,13 +506,18 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             )
 
             if parsed_id is not None:
-                response_variant_ids.append(parsed_id)
+                response_variant_ids.append(
+                    parsed_id,
+                )
 
         row_dcb = matching_row.get(
             "dcbDto",
         )
 
-        if isinstance(row_dcb, Mapping):
+        if isinstance(
+            row_dcb,
+            Mapping,
+        ):
             dcb_variant_id = cls._try_parse_positive_integer(
                 row_dcb.get(
                     "carVariantCentralId",
@@ -490,8 +542,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 "a different variant ID for the "
                 "requested variant slug: "
                 f"expected={expected_variant_id}, "
-                f"found={sorted(set(response_variant_ids))}, "
-                f"variant_slug={expected_variant_slug!r}"
+                f"found="
+                f"{sorted(set(response_variant_ids))}, "
+                f"variant_slug="
+                f"{expected_variant_slug!r}"
             )
 
         selected_variant = cls._normalize_identity_text(
@@ -513,7 +567,10 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                     normalized_value,
                 )
 
-        if isinstance(row_dcb, Mapping):
+        if isinstance(
+            row_dcb,
+            Mapping,
+        ):
             normalized_dcb_name = cls._normalize_identity_text(
                 row_dcb.get(
                     "carVariantId",
@@ -537,9 +594,9 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         if selected_variant is not None:
             if row_identity_values and selected_variant not in set(row_identity_values):
                 raise ExternalResponseError(
-                    "Cardekho model-specs API returned "
-                    "specifications for a different "
-                    "selected variant: "
+                    "Cardekho model-specs API "
+                    "returned specifications for "
+                    "a different selected variant: "
                     f"expected_slug="
                     f"{expected_variant_slug!r}, "
                     f"selected_variant="
@@ -554,21 +611,29 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
             raise ExternalResponseError(
                 "Cardekho model-specs API response "
-                "does not provide enough selected-variant "
-                "identity to safely store specifications: "
-                f"variant_slug={expected_variant_slug!r}, "
+                "does not provide enough "
+                "selected-variant identity to "
+                "safely store specifications: "
+                f"variant_slug="
+                f"{expected_variant_slug!r}, "
                 f"variant_id={expected_variant_id}"
             )
 
         if model_ids and expected_model_id not in set(model_ids):
             logger_service.info(
                 (
-                    "Accepted Cardekho model-specs response by variant identity "
-                    "and ignored discontinued/generated model ID mismatch: "
-                    f"expected_model_id={expected_model_id}, "
-                    f"found_model_ids={sorted(set(model_ids))}, "
-                    f"variant_id={expected_variant_id}, "
-                    f"variant_slug={expected_variant_slug!r}"
+                    "Accepted Cardekho model-specs "
+                    "response by variant identity "
+                    "and ignored discontinued/"
+                    "generated model ID mismatch: "
+                    f"expected_model_id="
+                    f"{expected_model_id}, "
+                    f"found_model_ids="
+                    f"{sorted(set(model_ids))}, "
+                    f"variant_id="
+                    f"{expected_variant_id}, "
+                    f"variant_slug="
+                    f"{expected_variant_slug!r}"
                 ),
                 context=("CarDekhoTrimSpecsFeaturesExecutor"),
             )
@@ -630,7 +695,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         request_url = redirect_path.lstrip("/")
 
         if split_result.query:
-            request_url = f"{request_url}?{split_result.query}"
+            request_url = f"{request_url}?" f"{split_result.query}"
 
         return {
             "url": request_url,
@@ -650,7 +715,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         if endpoint.method != "GET":
             raise RuntimeError(
-                "Unexpected HTTP method configured for the Cardekho model-specs API"
+                "Unexpected HTTP method configured " "for the Cardekho model-specs API"
             )
 
         normalized_referer_path = referer_path
@@ -669,7 +734,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             },
             headers={
                 **endpoint.default_headers,
-                "Referer": (f"{CARDEKHO_BASE_URL}{normalized_referer_path}"),
+                "Referer": (f"{CARDEKHO_BASE_URL}" f"{normalized_referer_path}"),
             },
         )
 
@@ -735,7 +800,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             brand_slug=brand_slug,
             model_slug=model_slug,
             variant_slug=variant_slug,
-            request_url=redirect_request["url"],
+            request_url=(redirect_request["url"]),
             referer_path=(redirect_request["refererPath"]),
         )
 
@@ -773,6 +838,31 @@ class CarDekhoTrimSpecsFeaturesExecutor:
         return redirected_data
 
     @staticmethod
+    def _remove_dcb_dto(
+        value: Any,
+    ) -> Any:
+        if isinstance(
+            value,
+            Mapping,
+        ):
+            return {
+                key: (CarDekhoTrimSpecsFeaturesExecutor._remove_dcb_dto(item))
+                for key, item in value.items()
+                if key != "dcbDto"
+            }
+
+        if isinstance(
+            value,
+            list,
+        ):
+            return [
+                (CarDekhoTrimSpecsFeaturesExecutor._remove_dcb_dto(item))
+                for item in value
+            ]
+
+        return value
+
+    @staticmethod
     def _extract_specs(
         data: Mapping[str, Any],
     ) -> dict[str, Any]:
@@ -808,6 +898,8 @@ class CarDekhoTrimSpecsFeaturesExecutor:
 
         specification = specs.get("specification")
 
+        variant_table = data.get("variantTable")
+
         if not isinstance(
             featured,
             list,
@@ -815,8 +907,7 @@ class CarDekhoTrimSpecsFeaturesExecutor:
             raise ExternalResponseError(
                 "Cardekho model-specs API "
                 "response does not contain "
-                "a valid "
-                "data.specs.featured array"
+                "a valid data.specs.featured array"
             )
 
         if not isinstance(
@@ -830,9 +921,24 @@ class CarDekhoTrimSpecsFeaturesExecutor:
                 "data.specs.specification array"
             )
 
+        if not isinstance(
+            variant_table,
+            Mapping,
+        ):
+            raise ExternalResponseError(
+                "Cardekho model-specs API "
+                "response does not contain "
+                "a valid data.variantTable object"
+            )
+
+        cleaned_variant_table = CarDekhoTrimSpecsFeaturesExecutor._remove_dcb_dto(
+            variant_table,
+        )
+
         return {
             "featured": featured,
             "specification": specification,
+            "variantTable": cleaned_variant_table,
         }
 
     async def execute(
