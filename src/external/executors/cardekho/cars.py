@@ -1049,9 +1049,6 @@ class CarDekhoCarsExecutor:
                 raw_variant.get("centralId"),
             )
 
-            # Keep Cardekho's variantSlug as returned.
-            # Do not apply the strict model-slug regex because Cardekho
-            # legitimately uses values such as kia-seltos-hte-(o).
             variant_slug = cls._normalize_optional_string(
                 raw_variant.get("variantSlug"),
             )
@@ -1064,28 +1061,6 @@ class CarDekhoCarsExecutor:
 
             if variant_slug is not None and variant_slug in seen_slugs:
                 continue
-
-            variant_name = (
-                cls._normalize_optional_string(
-                    raw_variant.get("name"),
-                )
-                or cls._normalize_optional_string(
-                    raw_variant.get("text"),
-                )
-                or cls._normalize_optional_string(
-                    raw_variant.get("title"),
-                )
-            )
-
-            short_name = cls._normalize_optional_string(
-                raw_variant.get(
-                    "variantShortName",
-                ),
-            )
-
-            variant_url = cls._normalize_optional_url(
-                raw_variant.get("url"),
-            )
 
             raw_variant_status = raw_variant.get(
                 "variantStatus",
@@ -1112,15 +1087,20 @@ class CarDekhoCarsExecutor:
                     variant_slug,
                 )
 
+            variant_data = {
+                key: value for key, value in raw_variant.items() if key != "dcbDto"
+            }
+
+            if variant_id is not None:
+                variant_data["centralId"] = variant_id
+
+            if variant_slug is not None:
+                variant_data["variantSlug"] = variant_slug
+
+            variant_data["variantStatus"] = variant_status
+
             variants.append(
-                {
-                    "id": variant_id,
-                    "name": variant_name,
-                    "shortName": short_name,
-                    "slug": variant_slug,
-                    "url": variant_url,
-                    "status": variant_status,
-                }
+                variant_data,
             )
 
         return variants

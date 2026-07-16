@@ -196,57 +196,51 @@ class CarDekhoCarVariant(BaseModel):
 
     model_config = ConfigDict(
         populate_by_name=True,
-        extra="forbid",
+        extra="allow",
         str_strip_whitespace=True,
     )
 
-    variant_id: int | None = Field(
+    central_id: int | None = Field(
         default=None,
-        alias="id",
+        alias="centralId",
         gt=0,
     )
 
-    name: str | None = None
-
-    short_name: str | None = Field(
+    variant_slug: str | None = Field(
         default=None,
-        alias="shortName",
+        alias="variantSlug",
     )
 
-    slug: str | None = None
-
-    url: str | None = None
-
-    status: CarDekhoModelStatus
+    variant_status: CarDekhoModelStatus = Field(
+        alias="variantStatus",
+    )
 
     @field_validator(
-        "slug",
+        "variant_slug",
         mode="before",
     )
     @classmethod
-    def normalize_slug(
+    def normalize_variant_slug(
         cls,
         value: Any,
     ) -> str | None:
-        # Keep Cardekho's slug as supplied. Only reject non-string values
-        # and convert an empty string to None.
         return _normalize_optional_string(
             value,
-            field_name="variant.slug",
+            field_name="variant.variantSlug",
         )
 
     @field_validator(
-        "status",
+        "variant_status",
         mode="before",
     )
     @classmethod
-    def normalize_status(
+    def normalize_variant_status(
         cls,
         value: Any,
     ) -> str:
         return _normalize_model_status(
             value,
-            field_name="variant.status",
+            field_name="variant.variantStatus",
         )
 
     @model_validator(
@@ -255,8 +249,8 @@ class CarDekhoCarVariant(BaseModel):
     def validate_identity(
         self,
     ) -> Self:
-        if self.variant_id is None and self.slug is None:
-            raise ValueError("Variant must contain an id or slug")
+        if self.central_id is None and self.variant_slug is None:
+            raise ValueError("Variant must contain centralId or variantSlug")
 
         return self
 
@@ -846,24 +840,25 @@ class CarDekhoCar(BaseModel):
         seen_slugs: set[str] = set()
 
         for variant in self.variants:
-            if variant.variant_id is not None:
-                if variant.variant_id in seen_ids:
+            if variant.central_id is not None:
+                if variant.central_id in seen_ids:
                     raise ValueError(
-                        f"variants contains duplicate id={variant.variant_id}"
+                        "variants contains duplicate " f"centralId={variant.central_id}"
                     )
 
                 seen_ids.add(
-                    variant.variant_id,
+                    variant.central_id,
                 )
 
-            if variant.slug is not None:
-                if variant.slug in seen_slugs:
+            if variant.variant_slug is not None:
+                if variant.variant_slug in seen_slugs:
                     raise ValueError(
-                        f"variants contains duplicate slug={variant.slug!r}"
+                        "variants contains duplicate "
+                        f"variantSlug={variant.variant_slug!r}"
                     )
 
                 seen_slugs.add(
-                    variant.slug,
+                    variant.variant_slug,
                 )
 
     @staticmethod

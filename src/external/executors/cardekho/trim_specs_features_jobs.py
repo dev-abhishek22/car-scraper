@@ -210,32 +210,33 @@ def _validate_variant_record(
     )
 
     variant_id = _validate_positive_integer(
-        variant.get("id"),
-        field_name="variant.id",
+        variant.get("centralId"),
+        field_name="variant.centralId",
     )
 
     variant_slug = _normalize_optional_variant_slug(
-        variant.get("slug"),
+        variant.get("variantSlug"),
     )
 
     if variant_slug is None:
-        raise ValueError("variant.slug must be a non-empty string")
+        raise ValueError("variant.variantSlug must be a non-empty string")
 
     variant_name = (
         _normalize_optional_string(variant.get("name"))
-        or _normalize_optional_string(variant.get("shortName"))
+        or _normalize_optional_string(variant.get("text"))
+        or _normalize_optional_string(variant.get("variantShortName"))
         or variant_slug
     )
 
     variant_short_name = (
-        _normalize_optional_string(variant.get("shortName")) or variant_name
+        _normalize_optional_string(variant.get("variantShortName")) or variant_name
     )
 
     variant_url = _normalize_optional_string(variant.get("url"))
 
     variant_status = _normalize_status(
-        variant.get("status"),
-        field_name="variant.status",
+        variant.get("variantStatus"),
+        field_name="variant.variantStatus",
     )
 
     normalized_variant = dict(variant)
@@ -390,7 +391,7 @@ async def iter_cardekho_trim_specs_features_variants(
             )
 
             raw_variant_id = (
-                raw_variant.get("id")
+                raw_variant.get("centralId")
                 if isinstance(
                     raw_variant,
                     Mapping,
@@ -399,7 +400,7 @@ async def iter_cardekho_trim_specs_features_variants(
             )
 
             raw_variant_slug = (
-                raw_variant.get("slug")
+                raw_variant.get("variantSlug")
                 if isinstance(
                     raw_variant,
                     Mapping,

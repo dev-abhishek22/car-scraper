@@ -52,6 +52,16 @@ CARDEKHO_MODEL_OVERVIEW: Final[ApiEndpoint] = ApiEndpoint(
 )
 
 
+CARDEKHO_MODEL_GALLERY: Final[ApiEndpoint] = ApiEndpoint(
+    name="cardekho_model_gallery",
+    method="GET",
+    path="/api/v1/model/gallery",
+    default_params={
+        "otherinfo": "all",
+    },
+)
+
+
 CARDEKHO_MODEL_SPECS: Final[ApiEndpoint] = ApiEndpoint(
     name="cardekho_model_specs",
     method="GET",
@@ -89,6 +99,7 @@ CARDEKHO_APIS: Final[dict[str, ApiEndpoint]] = {
     CARDEKHO_NEW_CARS.name: CARDEKHO_NEW_CARS,
     CARDEKHO_BRAND_MODELS.name: CARDEKHO_BRAND_MODELS,
     CARDEKHO_MODEL_OVERVIEW.name: CARDEKHO_MODEL_OVERVIEW,
+    CARDEKHO_MODEL_GALLERY.name: CARDEKHO_MODEL_GALLERY,
     CARDEKHO_MODEL_SPECS.name: CARDEKHO_MODEL_SPECS,
     CARDEKHO_CITIES_BUNDLE.name: CARDEKHO_CITIES_BUNDLE,
     CARDEKHO_MODEL_PRICE.name: CARDEKHO_MODEL_PRICE,
