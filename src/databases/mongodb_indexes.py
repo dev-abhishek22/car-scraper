@@ -22,6 +22,14 @@ CARWALE_BRANDS_COLLECTION: Final[str] = "carwale_brands"
 
 CARDEKHO_BRANDS_COLLECTION: Final[str] = "cardekho_brands"
 
+BIKEDEKHO_BRANDS_COLLECTION: Final[str] = "bikedekho_brands"
+
+BIKEDEKHO_SCOOTER_BRANDS_COLLECTION: Final[str] = "bikedekho_scooter_brands"
+
+BIKEDEKHO_MODELS_COLLECTION: Final[str] = "bikedekho_models"
+
+BIKEDEKHO_BIKES_COLLECTION: Final[str] = "bikedekho_bikes"
+
 CARWALE_MODELS_COLLECTION: Final[str] = "carwale_models"
 
 CARDEKHO_MODELS_COLLECTION: Final[str] = "cardekho_models"
@@ -495,6 +503,97 @@ async def _create_cardekho_brand_indexes(
                 ],
                 name="idx_scraped_at",
             ),
+        ]
+    )
+
+
+async def _create_bikedekho_brand_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [("slug", ASCENDING)],
+                name="uniq_brand_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [("popularity", DESCENDING)],
+                name="idx_popularity",
+            ),
+            IndexModel(
+                [("brandName", ASCENDING)],
+                name="idx_brand_name",
+            ),
+            IndexModel(
+                [("lastRunId", ASCENDING)],
+                name="idx_last_run_id",
+            ),
+            IndexModel(
+                [("scrapedAt", DESCENDING)],
+                name="idx_scraped_at",
+            ),
+        ]
+    )
+
+
+async def _create_bikedekho_scooter_brand_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(BIKEDEKHO_SCOOTER_BRANDS_COLLECTION)
+    return await collection.create_indexes(
+        [
+            IndexModel([("slug", ASCENDING)], name="uniq_brand_slug", unique=True),
+            IndexModel([("popularity", DESCENDING)], name="idx_popularity"),
+            IndexModel([("brandName", ASCENDING)], name="idx_brand_name"),
+            IndexModel([("lastRunId", ASCENDING)], name="idx_last_run_id"),
+            IndexModel([("scrapedAt", DESCENDING)], name="idx_scraped_at"),
+        ]
+    )
+
+
+async def _create_bikedekho_model_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [("brandSlug", ASCENDING), ("slug", ASCENDING)],
+                name="uniq_brand_model_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [("brandSlug", ASCENDING), ("modelStatus", ASCENDING)],
+                name="idx_brand_status",
+            ),
+            IndexModel([("id", ASCENDING)], name="idx_model_id"),
+            IndexModel([("lastRunId", ASCENDING)], name="idx_last_run_id"),
+            IndexModel([("scrapedAt", DESCENDING)], name="idx_scraped_at"),
+        ]
+    )
+
+
+async def _create_bikedekho_bike_indexes(
+    connection: MongoConnection,
+) -> list[str]:
+    collection = connection.collection(BIKEDEKHO_BIKES_COLLECTION)
+    return await collection.create_indexes(
+        [
+            IndexModel(
+                [("brandSlug", ASCENDING), ("slug", ASCENDING)],
+                name="uniq_brand_bike_slug",
+                unique=True,
+            ),
+            IndexModel(
+                [("brandSlug", ASCENDING), ("modelStatus", ASCENDING)],
+                name="idx_brand_status",
+            ),
+            IndexModel([("id", ASCENDING)], name="idx_model_id"),
+            IndexModel([("lastRunId", ASCENDING)], name="idx_last_run_id"),
+            IndexModel([("scrapedAt", DESCENDING)], name="idx_scraped_at"),
         ]
     )
 
@@ -2092,6 +2191,16 @@ async def ensure_mongodb_indexes(
 
     cardekho_brand_indexes = await _create_cardekho_brand_indexes(connection)
 
+    bikedekho_brand_indexes = await _create_bikedekho_brand_indexes(connection)
+
+    bikedekho_scooter_brand_indexes = (
+        await _create_bikedekho_scooter_brand_indexes(connection)
+    )
+
+    bikedekho_model_indexes = await _create_bikedekho_model_indexes(connection)
+
+    bikedekho_bike_indexes = await _create_bikedekho_bike_indexes(connection)
+
     carwale_model_indexes = await _create_carwale_model_indexes(connection)
 
     cardekho_model_indexes = await _create_cardekho_model_indexes(connection)
@@ -2121,6 +2230,10 @@ async def ensure_mongodb_indexes(
         SCRAPER_JOBS_COLLECTION: (scraper_job_indexes),
         CARWALE_BRANDS_COLLECTION: (carwale_brand_indexes),
         CARDEKHO_BRANDS_COLLECTION: (cardekho_brand_indexes),
+        BIKEDEKHO_BRANDS_COLLECTION: (bikedekho_brand_indexes),
+        BIKEDEKHO_SCOOTER_BRANDS_COLLECTION: (bikedekho_scooter_brand_indexes),
+        BIKEDEKHO_MODELS_COLLECTION: (bikedekho_model_indexes),
+        BIKEDEKHO_BIKES_COLLECTION: (bikedekho_bike_indexes),
         CARWALE_MODELS_COLLECTION: (carwale_model_indexes),
         CARDEKHO_MODELS_COLLECTION: (cardekho_model_indexes),
         CARWALE_CARS_COLLECTION: (carwale_car_indexes),
