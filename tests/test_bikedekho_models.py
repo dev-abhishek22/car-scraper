@@ -81,7 +81,17 @@ def test_executor_extracts_all_three_model_statuses() -> None:
         model for model in models if model["modelStatus"] == "DISCONTINUED"
     )
     assert current["isUpcoming"] is False
-    assert upcoming["expectedLaunchDate"] == "Jan, 2028"
+    assert set(upcoming) == {
+        "id",
+        "brandId",
+        "brandName",
+        "brandSlug",
+        "name",
+        "slug",
+        "modelName",
+        "modelStatus",
+        "isUpcoming",
+    }
     assert discontinued["id"] is None
     assert "_id" not in current
     assert client.last_request is not None
@@ -119,7 +129,7 @@ def test_executor_accepts_empty_optional_sections_and_normalizes_slug() -> None:
     assert models[0]["slug"] == "royal-enfield-bullet-electra"
 
 
-def test_discontinued_model_uses_slug_based_document_id() -> None:
+def test_discontinued_model_uses_compact_slug_based_document_id() -> None:
     model = BikeDekhoModel.create(
         brand={"_id": "bikedekho:brand:honda", "slug": "honda"},
         model={
@@ -138,4 +148,21 @@ def test_discontinued_model_uses_slug_based_document_id() -> None:
     )
 
     assert model.document_id == "bikedekho:model:honda:cbr650r"
-    assert model.to_mongo_document()["modelUrl"] == "/honda/cbr650r"
+    assert set(model.to_mongo_document()) == {
+        "_id",
+        "id",
+        "brandId",
+        "brandName",
+        "brandSlug",
+        "name",
+        "slug",
+        "modelName",
+        "modelStatus",
+        "isUpcoming",
+        "lastRunId",
+        "sourceBrandRunId",
+        "sourceBrandDocumentId",
+        "scrapedAt",
+        "createdAt",
+        "updatedAt",
+    }

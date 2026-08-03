@@ -24,8 +24,6 @@ class BikeDekhoModel(BaseModel):
     model_name: str = Field(alias="modelName", min_length=1)
     model_status: ModelStatus = Field(alias="modelStatus")
     is_upcoming: bool = Field(alias="isUpcoming")
-    expected_launch_date: str | None = Field(default=None, alias="expectedLaunchDate")
-    data: dict[str, Any] = Field(default_factory=dict, exclude=True)
     last_run_id: str = Field(alias="lastRunId")
     source_brand_run_id: str | None = Field(default=None, alias="sourceBrandRunId")
     source_brand_document_id: str = Field(alias="sourceBrandDocumentId")
@@ -51,13 +49,18 @@ class BikeDekhoModel(BaseModel):
         model_slug = str(model.get("slug", "")).strip().lower()
         if not SLUG_PATTERN.fullmatch(brand_slug) or not SLUG_PATTERN.fullmatch(model_slug):
             raise ValueError("brand and model slugs must be valid")
-        raw_data = dict(model)
-        raw_data.pop("_id", None)
         now = datetime.now(timezone.utc)
         return cls(
             _id=cls.build_document_id(brand_slug, model_slug),
-            **raw_data,
-            data=raw_data,
+            id=model.get("id"),
+            brandId=model.get("brandId"),
+            brandName=model.get("brandName"),
+            brandSlug=model.get("brandSlug"),
+            name=model.get("name"),
+            slug=model.get("slug"),
+            modelName=model.get("modelName"),
+            modelStatus=model.get("modelStatus"),
+            isUpcoming=model.get("isUpcoming"),
             lastRunId=run_id,
             sourceBrandRunId=source_brand_run_id,
             sourceBrandDocumentId=str(brand.get("_id")),
@@ -67,8 +70,4 @@ class BikeDekhoModel(BaseModel):
         )
 
     def to_mongo_document(self) -> dict[str, Any]:
-        document = self.model_dump(by_alias=True, mode="python")
-        for key, value in self.data.items():
-            if key not in {"_id", "lastRunId", "sourceBrandRunId", "sourceBrandDocumentId", "scrapedAt", "createdAt", "updatedAt"}:
-                document[key] = value
-        return document
+        return self.model_dump(by_alias=True, mode="python")

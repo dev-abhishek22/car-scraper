@@ -66,29 +66,17 @@ class BikeDekhoModelsExecutor:
         if isinstance(brand_id, bool) or not isinstance(brand_id, int) or brand_id <= 0:
             brand_id = None
 
-        normalized = dict(item)
-        # BikeDekho uses `_id` as its source model ID. MongoDB `_id` is
-        # generated separately by BikeDekhoModel.
-        normalized.pop("_id", None)
-        normalized.update(
-            {
-                "id": model_id,
-                "brandId": brand_id,
-                "brandName": brand_name,
-                "brandSlug": brand_slug,
-                "name": raw_name.strip(),
-                "slug": slug,
-                "modelName": raw_name.strip(),
-                "modelStatus": status,
-                "isUpcoming": status == "UPCOMING",
-                "modelUrl": item.get("modelUrl") or item.get("url"),
-            }
-        )
-        if status == "UPCOMING":
-            normalized["expectedLaunchDate"] = (
-                item.get("launchedAt") or item.get("date")
-            )
-        return normalized
+        return {
+            "id": model_id,
+            "brandId": brand_id,
+            "brandName": brand_name,
+            "brandSlug": brand_slug,
+            "name": raw_name.strip(),
+            "slug": slug,
+            "modelName": raw_name.strip(),
+            "modelStatus": status,
+            "isUpcoming": status == "UPCOMING",
+        }
 
     async def execute(self, *, brand: Mapping[str, Any]) -> list[dict[str, Any]]:
         brand_name = brand.get("brandName")

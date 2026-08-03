@@ -24,6 +24,7 @@ class BikeDekhoBike(BaseModel):
     overview: dict[str, Any]
     total_variants: int = Field(alias="totalVariants")
     variants: list[dict[str, Any]]
+    variant_specs_exist: bool = Field(default=False, alias="variantSpecsExist")
     total_comparisons: int = Field(alias="totalComparisons")
     compare_with: list[dict[str, Any]] = Field(alias="compareWith")
     total_similar_bikes: int = Field(alias="totalSimilarBikes")
@@ -70,6 +71,7 @@ class BikeDekhoBike(BaseModel):
             overview=overview,
             totalVariants=bike_data.get("totalVariants", 0),
             variants=bike_data.get("variants", []),
+            variantSpecsExist=bike_data.get("variantSpecsExist", False),
             totalComparisons=bike_data.get("totalComparisons", 0),
             compareWith=bike_data.get("compareWith", []),
             totalSimilarBikes=bike_data.get("totalSimilarBikes", 0),

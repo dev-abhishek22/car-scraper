@@ -6,10 +6,10 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
-from pymongo import UpdateOne
+from pymongo import ReplaceOne
 from pymongo.results import BulkWriteResult
 
 from src.databases.mongodb import (
@@ -176,32 +176,32 @@ class BikeDekhoModelRepository:
 
         collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
 
-        operations: list[UpdateOne] = []
+        existing_created_at: dict[str, datetime] = {}
+        cursor = collection.find(
+            {"_id": {"$in": list(deduplicated_models)}},
+            {"_id": 1, "createdAt": 1},
+        )
+        async for existing_document in cursor:
+            document_id = existing_document.get("_id")
+            created_at = existing_document.get("createdAt")
+            if isinstance(document_id, str) and isinstance(created_at, datetime):
+                existing_created_at[document_id] = created_at
+
+        operations: list[ReplaceOne] = []
 
         for model in deduplicated_models.values():
             document = model.to_mongo_document()
-
-            document.pop(
-                "_id",
-                None,
-            )
-
-            created_at = document.pop(
-                "createdAt",
-                datetime.now(timezone.utc),
+            document["createdAt"] = existing_created_at.get(
+                model.document_id,
+                model.created_at,
             )
 
             operations.append(
-                UpdateOne(
+                ReplaceOne(
                     {
                         "_id": model.document_id,
                     },
-                    {
-                        "$set": document,
-                        "$setOnInsert": {
-                            "createdAt": created_at,
-                        },
-                    },
+                    document,
                     upsert=True,
                 )
             )
@@ -245,27 +245,20 @@ class BikeDekhoModelRepository:
         collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
 
         document = model.to_mongo_document()
-
-        document.pop(
-            "_id",
-            None,
+        existing_document = await collection.find_one(
+            {"_id": model.document_id},
+            {"_id": 0, "createdAt": 1},
         )
+        if isinstance(existing_document, Mapping) and isinstance(
+            existing_document.get("createdAt"), datetime
+        ):
+            document["createdAt"] = existing_document["createdAt"]
 
-        created_at = document.pop(
-            "createdAt",
-            model.created_at,
-        )
-
-        await collection.update_one(
+        await collection.replace_one(
             {
                 "_id": model.document_id,
             },
-            {
-                "$set": document,
-                "$setOnInsert": {
-                    "createdAt": created_at,
-                },
-            },
+            document,
             upsert=True,
         )
 

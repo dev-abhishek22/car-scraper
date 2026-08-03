@@ -53,6 +53,17 @@ def test_executor_extracts_requested_bike_sections() -> None:
                     ]
                 }
             ],
+            "quickOverviewV3": {
+                "keyAndFeatureList": [
+                    {"id": "key-specifications", "title": "Key Specs"},
+                    {
+                        "id": "all-specs",
+                        "title": "All Specifications",
+                        "text": "All Specifications",
+                        "url": "/honda/shine/specifications",
+                    },
+                ]
+            },
             "navComapre": [{"modelName2": "Hero Splendor Plus"}],
             "similarBikes": {
                 "items": [{"modelId": 999, "modelName": "Must not be stored"}]
@@ -81,6 +92,7 @@ def test_executor_extracts_requested_bike_sections() -> None:
     )
 
     assert bike["totalVariants"] == 1
+    assert bike["variantSpecsExist"] is True
     assert bike["totalComparisons"] == 1
     assert bike["totalSimilarBikes"] == 1
     assert bike["similarBikes"][0]["modelSlug"] == "glamour"
@@ -111,6 +123,7 @@ def test_bike_model_supports_source_model_without_numeric_id() -> None:
             "compareWith": [],
             "similarBikes": [],
             "totalVariants": 0,
+            "variantSpecsExist": False,
             "totalComparisons": 0,
             "totalSimilarBikes": 0,
         },
@@ -120,6 +133,55 @@ def test_bike_model_supports_source_model_without_numeric_id() -> None:
     assert bike.document_id == "bikedekho:bike:honda:cbr650r"
     assert bike.model_id == 2000
     assert bike.brand_id == 28
+    assert bike.variant_specs_exist is False
+
+
+def test_executor_marks_variant_specs_false_without_all_specs_link() -> None:
+    executor = BikeDekhoBikesExecutor(
+        client=StubClient(
+            {
+                "data": {
+                    "overview": {
+                        "brandSlug": "honda",
+                        "modelSlug": "shine",
+                    },
+                    "quickOverviewV3": {
+                        "keyAndFeatureList": [
+                            {"id": "key-specifications", "title": "Key Specs"}
+                        ]
+                    },
+                }
+            }
+        )
+    )  # type: ignore[arg-type]
+
+    bike = asyncio.run(
+        executor.execute(model={"brandSlug": "honda", "slug": "shine"})
+    )
+
+    assert bike["variantSpecsExist"] is False
+
+
+def test_executor_marks_empty_quick_overview_as_no_variant_specs() -> None:
+    executor = BikeDekhoBikesExecutor(
+        client=StubClient(
+            {
+                "data": {
+                    "overview": {
+                        "brandSlug": "honda",
+                        "modelSlug": "shine",
+                    },
+                    "quickOverviewV3": [],
+                }
+            }
+        )
+    )  # type: ignore[arg-type]
+
+    bike = asyncio.run(
+        executor.execute(model={"brandSlug": "honda", "slug": "shine"})
+    )
+
+    assert bike["variantSpecsExist"] is False
 
 
 def test_executor_follows_application_redirect() -> None:
@@ -161,3 +223,28 @@ def test_executor_follows_application_redirect() -> None:
     assert len(client.requests) == 2
     assert client.requests[0]["params"]["url"] == "bmw/c-400-gt"
     assert client.requests[1]["params"]["url"] == "bmw-scooters/c-400-gt"
+
+
+def test_executor_accepts_year_prefixed_model_slug_alias() -> None:
+    executor = BikeDekhoBikesExecutor(
+        client=StubClient(
+            {
+                "data": {
+                    "overview": {
+                        "id": 883,
+                        "id_brand": 34,
+                        "brandSlug": "suzuki",
+                        "modelSlug": "gsx-r1000r",
+                    },
+                }
+            }
+        )
+    )  # type: ignore[arg-type]
+
+    bike = asyncio.run(
+        executor.execute(
+            model={"brandSlug": "suzuki", "slug": "2026-gsx-r1000r"}
+        )
+    )
+
+    assert bike["overview"]["modelSlug"] == "gsx-r1000r"

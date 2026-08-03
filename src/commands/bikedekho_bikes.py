@@ -257,9 +257,6 @@ def _model_payload(
         "lastRunId": model.last_run_id,
     }
 
-    if model.expected_launch_date is not None:
-        payload["expectedLaunchDate"] = model.expected_launch_date
-
     return payload
 
 

@@ -29,6 +29,22 @@ class BikeDekhoBikesExecutor:
             raise ExternalResponseError(f"BikeDekho {field} must be an array")
         return value
 
+    @staticmethod
+    def _is_year_prefixed_model_alias(
+        requested_slug: str,
+        response_slug: Any,
+    ) -> bool:
+        if not isinstance(response_slug, str):
+            return False
+
+        year, separator, canonical_slug = requested_slug.partition("-")
+        return (
+            separator == "-"
+            and len(year) == 4
+            and year.isdecimal()
+            and canonical_slug == response_slug
+        )
+
     async def _fetch_data(
         self,
         *,
@@ -119,6 +135,25 @@ class BikeDekhoBikesExecutor:
                     )
         return variants
 
+    @classmethod
+    def _has_variant_specs(cls, value: Any) -> bool:
+        if value in (None, False, "", []):
+            return False
+
+        quick_overview = cls._mapping(value, "data.quickOverviewV3")
+        return any(
+            cls._mapping(item, f"quickOverviewV3.keyAndFeatureList[{index}]").get(
+                "id"
+            )
+            == "all-specs"
+            for index, item in enumerate(
+                cls._list(
+                    quick_overview.get("keyAndFeatureList"),
+                    "data.quickOverviewV3.keyAndFeatureList",
+                )
+            )
+        )
+
     async def execute(self, *, model: Mapping[str, Any]) -> dict[str, Any]:
         brand_slug = model.get("brandSlug")
         model_slug = model.get("slug")
@@ -134,12 +169,19 @@ class BikeDekhoBikesExecutor:
         overview = dict(self._mapping(data.get("overview"), "data.overview"))
         response_brand_slug = overview.get("brandSlug")
         response_model_slug = overview.get("modelSlug")
-        if response_brand_slug != brand_slug or response_model_slug != model_slug:
+        if response_brand_slug != brand_slug or (
+            response_model_slug != model_slug
+            and not self._is_year_prefixed_model_alias(
+                model_slug,
+                response_model_slug,
+            )
+        ):
             raise ExternalResponseError(
                 "BikeDekho modelOverview identity does not match the requested model"
             )
 
         variants = self._variants(data.get("variantTable"))
+        variant_specs_exist = self._has_variant_specs(data.get("quickOverviewV3"))
         comparisons = [
             dict(self._mapping(item, f"data.navComapre[{index}]"))
             for index, item in enumerate(
@@ -172,6 +214,7 @@ class BikeDekhoBikesExecutor:
         return {
             "overview": overview,
             "variants": variants,
+            "variantSpecsExist": variant_specs_exist,
             "compareWith": comparisons,
             "similarBikes": similar_bikes,
             "totalVariants": len(variants),
