@@ -82,19 +82,25 @@ class BikeDekhoBikesExecutor:
 
             redirect = data.get("redirect")
             if not isinstance(redirect, Mapping):
-                raise ExternalResponseError(
-                    "BikeDekho data.overview must be an object"
-                )
+                raise ExternalResponseError("BikeDekho data.overview must be an object")
 
             redirect_url = redirect.get("redirectURL")
             status_code = redirect.get("statusCode")
             if (
                 not isinstance(redirect_url, str)
                 or not redirect_url.strip()
-                or status_code not in {301, 302, 307, 308}
+                or isinstance(status_code, bool)
+                or not isinstance(status_code, int)
             ):
                 raise ExternalResponseError(
-                    "BikeDekho modelOverview returned an invalid redirect"
+                    "BikeDekho modelOverview returned a malformed redirect: "
+                    f"redirectURL={redirect_url!r}, statusCode={status_code!r}"
+                )
+
+            if status_code not in {301, 302, 307, 308}:
+                raise ExternalResponseError(
+                    "BikeDekho modelOverview redirect ended without a model: "
+                    f"statusCode={status_code}, redirectURL={redirect_url!r}"
                 )
 
             path = urlsplit(redirect_url).path.strip("/")
@@ -142,9 +148,7 @@ class BikeDekhoBikesExecutor:
 
         quick_overview = cls._mapping(value, "data.quickOverviewV3")
         return any(
-            cls._mapping(item, f"quickOverviewV3.keyAndFeatureList[{index}]").get(
-                "id"
-            )
+            cls._mapping(item, f"quickOverviewV3.keyAndFeatureList[{index}]").get("id")
             == "all-specs"
             for index, item in enumerate(
                 cls._list(

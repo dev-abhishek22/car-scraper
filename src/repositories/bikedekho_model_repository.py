@@ -50,8 +50,10 @@ class BikeDekhoModelRepository:
     def __init__(
         self,
         connection: MongoConnection = mongo_connection,
+        collection_name: str = BIKEDEKHO_MODELS_COLLECTION,
     ) -> None:
         self._connection = connection
+        self._collection_name = collection_name
 
     @staticmethod
     def _normalize_run_id(
@@ -174,7 +176,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         existing_created_at: dict[str, datetime] = {}
         cursor = collection.find(
@@ -242,7 +244,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = model.to_mongo_document()
         existing_document = await collection.find_one(
@@ -288,7 +290,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = await collection.find_one(
             {
@@ -330,7 +332,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = await collection.find_one(
             {
@@ -383,7 +385,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         return await collection.count_documents(query)
 
@@ -406,7 +408,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         cursor = collection.find(query).sort(
             [
@@ -467,7 +469,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         cursor = collection.find(
             query,
@@ -506,7 +508,7 @@ class BikeDekhoModelRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_MODELS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         result = await collection.delete_many(
             {

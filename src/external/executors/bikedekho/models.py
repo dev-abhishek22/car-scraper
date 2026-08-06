@@ -12,8 +12,16 @@ SLUG_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 class BikeDekhoModelsExecutor:
-    def __init__(self, client: AsyncExternalHttpClient) -> None:
+    def __init__(
+        self,
+        client: AsyncExternalHttpClient,
+        *,
+        vehicle_type: str = "bikes",
+    ) -> None:
+        if vehicle_type not in {"bikes", "scooters"}:
+            raise ValueError("vehicle_type must be 'bikes' or 'scooters'")
         self._client = client
+        self._vehicle_type = vehicle_type
 
     @staticmethod
     def _mapping(value: Any, field: str) -> Mapping[str, Any]:
@@ -88,7 +96,7 @@ class BikeDekhoModelsExecutor:
 
         # Build the request from the slug read from MongoDB. This avoids
         # depending on stale or malformed stored brand URLs.
-        brand_url = f"/{brand_slug}-bikes"
+        brand_url = f"/{brand_slug}-{self._vehicle_type}"
 
         endpoint = BIKEDEKHO_BRAND_PAGE
         response = await self._client.get_json(
@@ -100,9 +108,21 @@ class BikeDekhoModelsExecutor:
         data = self._mapping(root.get("data"), "data")
 
         sources = (
-            (self._items(data.get("primaryData"), "data.primaryData"), "CURRENT", "primaryData.items"),
-            (self._items(data.get("upcoming"), "data.upcoming"), "UPCOMING", "upcoming.items"),
-            (self._items(data.get("discontinueBikes"), "data.discontinueBikes"), "DISCONTINUED", "discontinueBikes.items"),
+            (
+                self._items(data.get("primaryData"), "data.primaryData"),
+                "CURRENT",
+                "primaryData.items",
+            ),
+            (
+                self._items(data.get("upcoming"), "data.upcoming"),
+                "UPCOMING",
+                "upcoming.items",
+            ),
+            (
+                self._items(data.get("discontinueBikes"), "data.discontinueBikes"),
+                "DISCONTINUED",
+                "discontinueBikes.items",
+            ),
         )
         priority = {"DISCONTINUED": 1, "UPCOMING": 2, "CURRENT": 3}
         deduplicated: dict[str, dict[str, Any]] = {}
@@ -116,7 +136,14 @@ class BikeDekhoModelsExecutor:
                     index=index,
                     source=source,
                 )
+                if self._vehicle_type == "scooters":
+                    brand_prefix = f"{brand_slug}-"
+                    if model["slug"].startswith(brand_prefix):
+                        model["slug"] = model["slug"][len(brand_prefix) :]
                 existing = deduplicated.get(model["slug"])
-                if existing is None or priority[status] > priority[existing["modelStatus"]]:
+                if (
+                    existing is None
+                    or priority[status] > priority[existing["modelStatus"]]
+                ):
                     deduplicated[model["slug"]] = model
         return list(deduplicated.values())

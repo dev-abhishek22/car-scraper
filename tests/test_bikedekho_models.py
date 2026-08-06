@@ -129,6 +129,43 @@ def test_executor_accepts_empty_optional_sections_and_normalizes_slug() -> None:
     assert models[0]["slug"] == "royal-enfield-bullet-electra"
 
 
+def test_scooter_executor_uses_scooter_brand_page() -> None:
+    client = StubClient(
+        {
+            "data": {
+                "primaryData": {
+                    "items": [
+                        {
+                            "modelId": 1027,
+                            "idBrand": 28,
+                            "modelName": "Honda Activa",
+                            "modelSlug": "activa",
+                        }
+                    ]
+                }
+            }
+        }
+    )
+    executor = BikeDekhoModelsExecutor(  # type: ignore[arg-type]
+        client=client,
+        vehicle_type="scooters",
+    )
+
+    models = asyncio.run(
+        executor.execute(
+            brand={
+                "brandName": "Honda",
+                "slug": "honda",
+                "brandUrl": "/honda-scooters",
+            }
+        )
+    )
+
+    assert models[0]["slug"] == "activa"
+    assert client.last_request is not None
+    assert client.last_request["params"]["url"] == "/honda-scooters"
+
+
 def test_discontinued_model_uses_compact_slug_based_document_id() -> None:
     model = BikeDekhoModel.create(
         brand={"_id": "bikedekho:brand:honda", "slug": "honda"},

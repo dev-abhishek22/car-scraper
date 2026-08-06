@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+import pytest
+
+from src.clients.client import ExternalResponseError
 from src.external.executors.bikedekho.bikes import BikeDekhoBikesExecutor
 from src.models.bikedekho_bike import BikeDekhoBike
 
@@ -87,9 +90,7 @@ def test_executor_extracts_requested_bike_sections() -> None:
     client = StubClient(response)
     executor = BikeDekhoBikesExecutor(client=client)  # type: ignore[arg-type]
 
-    bike = asyncio.run(
-        executor.execute(model={"brandSlug": "honda", "slug": "shine"})
-    )
+    bike = asyncio.run(executor.execute(model={"brandSlug": "honda", "slug": "shine"}))
 
     assert bike["totalVariants"] == 1
     assert bike["variantSpecsExist"] is True
@@ -155,9 +156,7 @@ def test_executor_marks_variant_specs_false_without_all_specs_link() -> None:
         )
     )  # type: ignore[arg-type]
 
-    bike = asyncio.run(
-        executor.execute(model={"brandSlug": "honda", "slug": "shine"})
-    )
+    bike = asyncio.run(executor.execute(model={"brandSlug": "honda", "slug": "shine"}))
 
     assert bike["variantSpecsExist"] is False
 
@@ -177,9 +176,7 @@ def test_executor_marks_empty_quick_overview_as_no_variant_specs() -> None:
         )
     )  # type: ignore[arg-type]
 
-    bike = asyncio.run(
-        executor.execute(model={"brandSlug": "honda", "slug": "shine"})
-    )
+    bike = asyncio.run(executor.execute(model={"brandSlug": "honda", "slug": "shine"}))
 
     assert bike["variantSpecsExist"] is False
 
@@ -215,14 +212,36 @@ def test_executor_follows_application_redirect() -> None:
     )
     executor = BikeDekhoBikesExecutor(client=client)  # type: ignore[arg-type]
 
-    bike = asyncio.run(
-        executor.execute(model={"brandSlug": "bmw", "slug": "c-400-gt"})
-    )
+    bike = asyncio.run(executor.execute(model={"brandSlug": "bmw", "slug": "c-400-gt"}))
 
     assert bike["overview"]["id"] == 2402
     assert len(client.requests) == 2
     assert client.requests[0]["params"]["url"] == "bmw/c-400-gt"
     assert client.requests[1]["params"]["url"] == "bmw-scooters/c-400-gt"
+
+
+def test_executor_reports_terminal_redirect_status() -> None:
+    executor = BikeDekhoBikesExecutor(
+        client=StubClient(
+            {
+                "data": {
+                    "redirect": {
+                        "redirectURL": "/400",
+                        "statusCode": 404,
+                        "error": True,
+                    }
+                }
+            }
+        )
+    )  # type: ignore[arg-type]
+
+    with pytest.raises(
+        ExternalResponseError,
+        match="redirect ended without a model.*statusCode=404",
+    ):
+        asyncio.run(
+            executor.execute(model={"brandSlug": "tvs", "slug": "scooty-streak"})
+        )
 
 
 def test_executor_accepts_year_prefixed_model_slug_alias() -> None:
@@ -242,9 +261,7 @@ def test_executor_accepts_year_prefixed_model_slug_alias() -> None:
     )  # type: ignore[arg-type]
 
     bike = asyncio.run(
-        executor.execute(
-            model={"brandSlug": "suzuki", "slug": "2026-gsx-r1000r"}
-        )
+        executor.execute(model={"brandSlug": "suzuki", "slug": "2026-gsx-r1000r"})
     )
 
     assert bike["overview"]["modelSlug"] == "gsx-r1000r"

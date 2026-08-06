@@ -18,9 +18,11 @@ from src.models.bikedekho_brand import BikeDekhoBrand
 from src.models.scraper_job import ScraperJob
 from src.models.scraper_run import ScraperRun
 from src.repositories.bikedekho_brand_repository import (
+    BikeDekhoBrandRepository,
     bikedekho_brand_repository,
 )
 from src.repositories.bikedekho_model_repository import (
+    BikeDekhoModelRepository,
     bikedekho_model_repository,
 )
 from src.repositories.scraper_job_repository import (
@@ -38,6 +40,8 @@ JOB_TYPE = "fetch-models"
 
 SOURCE_COLLECTION = "bikedekho_brands"
 TARGET_COLLECTION = "bikedekho_models"
+SCOOTER_SOURCE_COLLECTION = "bikedekho_scooter_brands"
+SCOOTER_TARGET_COLLECTION = "bikedekho_scooter_models"
 
 HTTP_STATUS_PATTERN = re.compile(
     r"(?:status|status_code|http_status)" r"\s*[=:]\s*(\d{3})",
@@ -227,18 +231,21 @@ def _build_job(
     *,
     run_id: str,
     brand: BikeDekhoBrand,
+    source_collection: str,
+    target_collection: str,
+    resource_name: str,
 ) -> ScraperJob:
     return ScraperJob.create(
         run_id=run_id,
         job_id=f"model:{brand.slug}",
         source=SOURCE_NAME,
-        resource=RESOURCE_NAME,
+        resource=resource_name,
         job_type=JOB_TYPE,
         item_key=brand.slug,
         payload=_brand_payload(brand),
         metadata={
-            "sourceCollection": SOURCE_COLLECTION,
-            "targetCollection": TARGET_COLLECTION,
+            "sourceCollection": source_collection,
+            "targetCollection": target_collection,
             "sourceBrandRunId": (brand.last_run_id),
             "sourceBrandDocumentId": (brand.document_id),
             "sourceBrandSlug": brand.slug,
@@ -279,27 +286,33 @@ def _build_progress(
 async def _select_brands(
     *,
     brand_filter: str | None,
+    brand_repository: BikeDekhoBrandRepository,
+    vehicle_type: str,
 ) -> list[BikeDekhoBrand]:
+    brands_command = (
+        "bikedekho-scooter-brands" if vehicle_type == "scooters" else "bikedekho-brands"
+    )
+
     if brand_filter is not None:
-        brand = await bikedekho_brand_repository.get_by_slug(brand_filter)
+        brand = await brand_repository.get_by_slug(brand_filter)
 
         if brand is None:
             raise LookupError(
                 "BikeDekho brand was not found in "
                 "MongoDB using slug: "
                 f"brand={brand_filter!r}. "
-                "Run bikedekho-brands first."
+                f"Run {brands_command} first."
             )
 
         return [
             brand,
         ]
 
-    brands = await bikedekho_brand_repository.list_all()
+    brands = await brand_repository.list_all()
 
     if not brands:
         raise LookupError(
-            "No BikeDekho brands were found in MongoDB. Run bikedekho-brands first."
+            f"No BikeDekho brands were found in MongoDB. Run {brands_command} first."
         )
 
     return brands
@@ -349,7 +362,27 @@ async def run_bikedekho_models(
     requests_per_second: float = 5.0,
     pause_every_requests: int = 0,
     pause_seconds: float = 0.0,
+    vehicle_type: str = "bikes",
 ) -> dict[str, Any]:
+    if vehicle_type not in {"bikes", "scooters"}:
+        raise ValueError("vehicle_type must be 'bikes' or 'scooters'")
+
+    is_scooters = vehicle_type == "scooters"
+    command_name = "bikedekho-scooter-models" if is_scooters else COMMAND_NAME
+    resource_name = "scooter-models" if is_scooters else RESOURCE_NAME
+    source_collection = SCOOTER_SOURCE_COLLECTION if is_scooters else SOURCE_COLLECTION
+    target_collection = SCOOTER_TARGET_COLLECTION if is_scooters else TARGET_COLLECTION
+    brand_repository = (
+        BikeDekhoBrandRepository(collection_name=source_collection)
+        if is_scooters
+        else bikedekho_brand_repository
+    )
+    model_repository = (
+        BikeDekhoModelRepository(collection_name=target_collection)
+        if is_scooters
+        else bikedekho_model_repository
+    )
+
     normalized_brand = _normalize_brand_filter(brand)
 
     normalized_workers = _validate_workers(workers)
@@ -369,7 +402,7 @@ async def run_bikedekho_models(
     run = ScraperRun.create(
         source=SOURCE_NAME,
         resource=RESOURCE_NAME,
-        command=COMMAND_NAME,
+        command=command_name,
         mode=mode,
         filters={
             "brand": normalized_brand,
@@ -387,8 +420,8 @@ async def run_bikedekho_models(
         },
         metadata={
             "storage": "mongodb",
-            "sourceCollection": (SOURCE_COLLECTION),
-            "targetCollection": (TARGET_COLLECTION),
+            "sourceCollection": source_collection,
+            "targetCollection": target_collection,
         },
     )
 
@@ -430,7 +463,11 @@ async def run_bikedekho_models(
 
         run_created = True
 
-        selected_brands = await _select_brands(brand_filter=normalized_brand)
+        selected_brands = await _select_brands(
+            brand_filter=normalized_brand,
+            brand_repository=brand_repository,
+            vehicle_type=vehicle_type,
+        )
 
         current_brand_count = len(selected_brands)
         upcoming_brand_count = 0
@@ -440,6 +477,9 @@ async def run_bikedekho_models(
             _build_job(
                 run_id=run_id,
                 brand=selected_brand,
+                source_collection=source_collection,
+                target_collection=target_collection,
+                resource_name=resource_name,
             )
             for selected_brand in selected_brands
         ]
@@ -476,7 +516,10 @@ async def run_bikedekho_models(
             pause_every_requests=(normalized_pause_every_requests),
             pause_seconds=(normalized_pause_seconds),
         ) as client:
-            executor = BikeDekhoModelsExecutor(client=client)
+            executor = BikeDekhoModelsExecutor(
+                client=client,
+                vehicle_type=vehicle_type,
+            )
 
             async def worker(
                 worker_number: int,
@@ -487,7 +530,7 @@ async def run_bikedekho_models(
                     claimed_job = await scraper_job_repository.claim_next(
                         run_id=run_id,
                         worker_id=worker_id,
-                        resource=RESOURCE_NAME,
+                        resource=resource_name,
                         job_type=JOB_TYPE,
                     )
 
@@ -531,7 +574,7 @@ async def run_bikedekho_models(
                     try:
                         models = await executor.execute(brand=payload)
 
-                        upsert_result = await bikedekho_model_repository.bulk_upsert(
+                        upsert_result = await model_repository.bulk_upsert(
                             brand=payload,
                             models=models,
                             run_id=run_id,
@@ -690,7 +733,7 @@ async def run_bikedekho_models(
         )
 
         return {
-            "command": COMMAND_NAME,
+            "command": command_name,
             "runId": run_id,
             "status": finished_run.status,
             "mode": mode,
@@ -713,8 +756,8 @@ async def run_bikedekho_models(
             "matched": aggregate["matched"],
             "modified": aggregate["modified"],
             "inserted": aggregate["inserted"],
-            "sourceCollection": (SOURCE_COLLECTION),
-            "collection": (TARGET_COLLECTION),
+            "sourceCollection": source_collection,
+            "collection": target_collection,
             "httpMetrics": client_metrics,
             "jobs": job_counts.to_dict(),
         }

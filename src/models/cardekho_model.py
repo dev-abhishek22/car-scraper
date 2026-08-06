@@ -176,18 +176,6 @@ class CarDekhoModel(BaseModel):
                 f"isUpcoming does not match modelStatus={self.model_status!r}"
             )
 
-        if (
-            self.model_status
-            in {
-                "CURRENT",
-                "DISCONTINUED",
-            }
-            and self.expected_launch_date is not None
-        ):
-            raise ValueError(
-                "Current and discontinued models cannot have an expectedLaunchDate"
-            )
-
         return self
 
     @staticmethod
@@ -428,17 +416,8 @@ class CarDekhoModel(BaseModel):
             field_name=("model.expectedLaunchDate"),
         )
 
-        if (
-            model_status
-            in {
-                "CURRENT",
-                "DISCONTINUED",
-            }
-            and expected_launch_date is not None
-        ):
-            raise ValueError(
-                "Current and discontinued models cannot have an expectedLaunchDate"
-            )
+        if model_status in {"CURRENT", "DISCONTINUED"}:
+            expected_launch_date = None
 
         resolved_source_brand_run_id = source_brand_run_id
 

@@ -968,17 +968,8 @@ class CarDekhoCar(BaseModel):
             field_name="model.expectedLaunchDate",
         )
 
-        if (
-            model_status
-            in {
-                "CURRENT",
-                "DISCONTINUED",
-            }
-            and expected_launch_date is not None
-        ):
-            raise ValueError(
-                "Current and discontinued models cannot have expectedLaunchDate"
-            )
+        if model_status in {"CURRENT", "DISCONTINUED"}:
+            expected_launch_date = None
 
         resolved_source_model_run_id = source_model_run_id
 

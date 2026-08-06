@@ -246,7 +246,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = await collection.find_one(
             {
@@ -278,7 +278,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = await collection.find_one(
             {
@@ -299,7 +299,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         document = await collection.find_one(
             {
@@ -335,7 +335,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         return await collection.count_documents(query)
 
@@ -362,7 +362,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         cursor = collection.find(query).sort(
             [
@@ -437,7 +437,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         cursor = collection.find(
             query,
@@ -480,7 +480,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         cursor = collection.find(
             {
@@ -521,7 +521,7 @@ class BikeDekhoBrandRepository:
 
         await self._connection.connect()
 
-        collection = self._connection.collection(BIKEDEKHO_BRANDS_COLLECTION)
+        collection = self._connection.collection(self._collection_name)
 
         result = await collection.delete_many(
             {
