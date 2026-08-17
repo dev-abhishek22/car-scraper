@@ -52,6 +52,12 @@ class CardekhoCityPriceRunFilters(
         alias="popularCitiesOnly",
     )
 
+    tier: int | None = Field(
+        default=None,
+        ge=1,
+        le=3,
+    )
+
     max_jobs: int | None = Field(
         default=None,
         alias="maxJobs",
@@ -271,6 +277,7 @@ class CardekhoCityPriceRun(
         city: str | None,
         city_id: int | None,
         popular_cities_only: bool,
+        tier: int | None,
         max_jobs: int | None,
         workers: int,
         requests_per_second: float,
@@ -291,6 +298,7 @@ class CardekhoCityPriceRun(
                     city=city,
                     cityId=city_id,
                     popularCitiesOnly=(popular_cities_only),
+                    tier=tier,
                     maxJobs=max_jobs,
                 )
             ),

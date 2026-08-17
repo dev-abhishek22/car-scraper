@@ -41,6 +41,7 @@ class _CardekhoCitySource:
     city_display_name: str
     city_slug: str
     is_popular: bool
+    tier: int | None
     source_document_id: str
     source_run_id: str | None
 
@@ -424,12 +425,21 @@ def _parse_city_document(
 
     is_popular = is_popular_value is True or is_popular_value == 1
 
+    tier_value = document.get("tier")
+
+    tier = (
+        tier_value
+        if isinstance(tier_value, int) and not isinstance(tier_value, bool)
+        else None
+    )
+
     return _CardekhoCitySource(
         city_id=city_id,
         city_name=city_name,
         city_display_name=(city_display_name),
         city_slug=city_slug,
         is_popular=is_popular,
+        tier=tier,
         source_document_id=(source_document_id),
         source_run_id=(_normalize_optional_string(document.get("lastRunId"))),
     )
@@ -439,6 +449,7 @@ async def _load_cardekho_cities(
     *,
     selected_city: str | None,
     selected_city_id: int | None,
+    selected_tier: int | None,
     popular_cities_only: bool,
 ) -> list[_CardekhoCitySource]:
     await mongo_connection.connect()
@@ -465,6 +476,9 @@ async def _load_cardekho_cities(
             ],
         }
 
+    if selected_tier is not None:
+        query["tier"] = selected_tier
+
     cursor = collection.find(
         query,
         {
@@ -476,6 +490,7 @@ async def _load_cardekho_cities(
             "slug": 1,
             "cityMaskingName": 1,
             "aliases": 1,
+            "tier": 1,
             "isPopular": 1,
             "lastRunId": 1,
         },
@@ -651,6 +666,7 @@ async def iter_cardekho_city_price_jobs(
     selected_model_id: int | None = None,
     selected_city: str | None = None,
     selected_city_id: int | None = None,
+    selected_tier: int | None,
     popular_cities_only: bool = False,
     max_jobs: int | None = None,
 ) -> AsyncIterator[CardekhoCityPriceJob]:
@@ -688,6 +704,14 @@ async def iter_cardekho_city_price_jobs(
         field_name=("selected_city_id"),
     )
 
+    normalized_tier = _normalize_optional_positive_integer(
+        selected_tier,
+        field_name=("selected_tier"),
+    )
+
+    if normalized_tier is not None and normalized_tier > 3:
+        raise ValueError("selected_tier must be between 1 and 3")
+
     if normalized_model is not None and normalized_brand is None:
         raise ValueError("selected_model requires selected_brand")
 
@@ -713,6 +737,7 @@ async def iter_cardekho_city_price_jobs(
     cities = await _load_cardekho_cities(
         selected_city=(normalized_city),
         selected_city_id=(normalized_city_id),
+        selected_tier=(normalized_tier),
         popular_cities_only=(popular_cities_only),
     )
 

@@ -267,6 +267,7 @@ async def run_cardekho_city_prices(
     city: str | None = None,
     city_id: int | None = None,
     popular_cities_only: bool = False,
+    tier: int | None = None,
     workers: int = 5,
     requests_per_second: float = 2.0,
     mongo_batch_size: int = 100,
@@ -301,6 +302,14 @@ async def run_cardekho_city_prices(
         city_id,
         field_name="city_id",
     )
+
+    normalized_tier = _normalize_optional_positive_integer(
+        tier,
+        field_name="tier",
+    )
+
+    if normalized_tier is not None and normalized_tier > 3:
+        raise ValueError("tier must be between 1 and 3")
 
     normalized_workers = _validate_workers(workers)
 
@@ -380,6 +389,8 @@ async def run_cardekho_city_prices(
 
             active_popular_cities_only = popular_cities_only
 
+            active_tier = normalized_tier
+
             active_max_jobs = normalized_max_jobs
 
             active_workers = normalized_workers
@@ -407,6 +418,7 @@ async def run_cardekho_city_prices(
                 city=active_city,
                 city_id=active_city_id,
                 popular_cities_only=(active_popular_cities_only),
+                tier=(active_tier),
                 max_jobs=(active_max_jobs),
                 workers=(active_workers),
                 requests_per_second=(active_requests_per_second),
@@ -460,6 +472,8 @@ async def run_cardekho_city_prices(
             active_city_id = existing_run.filters.city_id
 
             active_popular_cities_only = existing_run.filters.popular_cities_only
+
+            active_tier = existing_run.filters.tier
 
             active_max_jobs = existing_run.filters.max_jobs
 
@@ -515,6 +529,7 @@ async def run_cardekho_city_prices(
                 selected_model_id=(active_model_id),
                 selected_city=(active_city),
                 selected_city_id=(active_city_id),
+                selected_tier=(active_tier),
                 popular_cities_only=(active_popular_cities_only),
                 max_jobs=(active_max_jobs),
             )
@@ -562,10 +577,12 @@ async def run_cardekho_city_prices(
 
             client_metrics = client.metrics_snapshot()
 
-        unresolved_failures = await (
-            cardekho_city_price_failure_repository.count_unresolved(
-                run_id=run_id,
-                retryable_only=False,
+        unresolved_failures = (
+            await (
+                cardekho_city_price_failure_repository.count_unresolved(
+                    run_id=run_id,
+                    retryable_only=False,
+                )
             )
         )
 

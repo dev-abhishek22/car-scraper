@@ -98,6 +98,7 @@ def _handle_cardekho_city_prices(
                 city=args.city,
                 city_id=args.city_id,
                 popular_cities_only=(args.popular_cities_only),
+                tier=args.tier,
                 workers=args.workers,
                 requests_per_second=(args.requests_per_second),
                 mongo_batch_size=(args.mongo_batch_size),
@@ -235,6 +236,16 @@ def add_cardekho_city_prices_command(
         "--popular-cities-only",
         action="store_true",
         help=("Generate jobs only for cities marked as popular in cardekho_cities."),
+    )
+
+    parser.add_argument(
+        "--tier",
+        type=_integer_in_range(
+            minimum=1,
+            maximum=3,
+        ),
+        default=None,
+        help="Only scrape cities belonging to the specified tier (1, 2, or 3).",
     )
 
     parser.add_argument(
