@@ -54,9 +54,20 @@ BIKEDEKHO_MODEL_OVERVIEW: Final[ApiEndpoint] = ApiEndpoint(
     },
 )
 
+BIKEDEKHO_TRIM_SPECS_FEATURES: Final[ApiEndpoint] = ApiEndpoint(
+    name="bikedekho_trim_specs_features",
+    method="GET",
+    path="/v1/pwa/modelSpec",
+    default_params={
+        "_format": "json",
+        "otherinfo": "all",
+    },
+)
+
 BIKEDEKHO_APIS: Final[dict[str, ApiEndpoint]] = {
     BIKEDEKHO_NEW_BIKES.name: BIKEDEKHO_NEW_BIKES,
     BIKEDEKHO_SCOOTERS.name: BIKEDEKHO_SCOOTERS,
     BIKEDEKHO_BRAND_PAGE.name: BIKEDEKHO_BRAND_PAGE,
     BIKEDEKHO_MODEL_OVERVIEW.name: BIKEDEKHO_MODEL_OVERVIEW,
+    BIKEDEKHO_TRIM_SPECS_FEATURES.name: BIKEDEKHO_TRIM_SPECS_FEATURES,
 }
