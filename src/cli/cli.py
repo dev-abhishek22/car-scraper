@@ -43,6 +43,9 @@ from src.cli.bikedekho.scooter_model_cli import (
 from src.cli.bikedekho.scooters_cli import (
     add_bikedekho_scooters_command,
 )
+from src.cli.bikedekho.scooter_trim_specs_features_cli import (
+    add_bikedekho_scooter_trim_specs_features_command,
+)
 from src.cli.carwale.brand_cli import (
     add_carwale_brands_command,
 )
@@ -150,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     add_bikedekho_trim_specs_features_command(
+        subparsers=subparsers,
+    )
+
+    add_bikedekho_scooter_trim_specs_features_command(
         subparsers=subparsers,
     )
 
