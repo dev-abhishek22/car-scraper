@@ -219,7 +219,7 @@ class CardekhoCityPriceExecutor:
         ).decode("ascii")
 
         slug = re.sub(
-            r"[^a-zA-Z0-9]+",
+            r"[^a-zA-Z0-9.]+",
             "-",
             ascii_value,
         ).lower()
@@ -1230,8 +1230,7 @@ class CardekhoCityPriceExecutor:
         if redirect_status_code is not None and not 300 <= redirect_status_code <= 399:
             return None
 
-        if not redirect_url.startswith("/"):
-            redirect_url = f"/{redirect_url}"
+        redirect_url = redirect_url.lstrip("/")
 
         return redirect_url
 
@@ -1372,6 +1371,42 @@ class CardekhoCityPriceExecutor:
             redirect_url = self._redirect_url(data)
 
             if redirect_url is not None:
+                print(
+                    f"CarDekho JSON redirect: "
+                    f"{job.request_url_value} -> {redirect_url}"
+                )
+
+                response_data = await self._client.get_json(
+                    endpoint=endpoint.path,
+                    params={
+                        **endpoint.default_params,
+                        "cityId": job.city_id,
+                        "modelSlug": job.model_slug,
+                        "url": redirect_url,
+                    },
+                    headers={
+                        **endpoint.default_headers,
+                        "Referer": (f"{CARDEKHO_BASE_URL}/{redirect_url.lstrip('/')}"),
+                    },
+                )
+
+                data = response_data.get("data")
+
+                if not isinstance(data, Mapping):
+                    raise ExternalResponseError(
+                        "CarDekho redirected model-price response "
+                        "does not contain a valid data object"
+                    )
+
+                raw_price_sections = data.get("priceDetailSection")
+
+            if (
+                not isinstance(
+                    raw_price_sections,
+                    list,
+                )
+                or not raw_price_sections
+            ):
                 return self._unavailable_record(
                     job=job,
                 )
