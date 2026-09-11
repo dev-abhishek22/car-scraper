@@ -501,6 +501,7 @@ async def run_cardekho_city_prices(
                 f"{active_model_id}, "
                 f"city={active_city}, "
                 f"city_id={active_city_id}, "
+                f"tier={active_tier}, "
                 "popular_cities_only="
                 f"{active_popular_cities_only}, "
                 f"workers={active_workers}, "
