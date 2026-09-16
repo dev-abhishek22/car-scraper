@@ -515,6 +515,55 @@ class CarDekhoOldGenerationComparison(BaseModel):
         return self
 
 
+class CarDekhoStandoutFeature(BaseModel):
+    """
+    Stand-out feature/highlight returned by the
+    CarDekho quickOverview section.
+    """
+
+    model_config = ConfigDict(
+        populate_by_name=True,
+        extra="allow",
+        str_strip_whitespace=True,
+    )
+
+    id: int | None = Field(
+        default=None,
+        gt=0,
+    )
+
+    expert_review_id: int | None = Field(
+        default=None,
+        alias="expertReviewId",
+        gt=0,
+    )
+
+    stand_out_features: str | None = Field(
+        default=None,
+        alias="standOutFeatures",
+    )
+
+    stand_out_features_without_tag: str | None = Field(
+        default=None,
+        alias="standOutFeaturesWithoutTag",
+    )
+
+    image_url: list[str] = Field(
+        default_factory=list,
+        alias="imageUrl",
+    )
+
+    webp: list[str] = Field(
+        default_factory=list,
+    )
+
+    title: str | None = None
+
+    lang: str | None = None
+
+    text: str | None = None
+
+
 class CarDekhoCar(BaseModel):
     """
     MongoDB representation of one CarDekho model
@@ -590,6 +639,11 @@ class CarDekhoCar(BaseModel):
     )
 
     overview: CarDekhoCarOverview
+
+    standout_features: list[CarDekhoStandoutFeature] = Field(
+        default_factory=list,
+        alias="standoutFeatures",
+    )
 
     total_variants: int = Field(
         alias="totalVariants",
@@ -997,6 +1051,14 @@ class CarDekhoCar(BaseModel):
 
         if not isinstance(overview, Mapping):
             raise ValueError("car_data.overview must be an object")
+        
+        raw_standout_features = car_data.get(
+            "standoutFeatures",
+            [],
+        )
+
+        if not isinstance(raw_standout_features, list):
+            raise ValueError("car_data.standoutFeatures must be an array")
 
         raw_variants = car_data.get(
             "variants",
@@ -1059,6 +1121,7 @@ class CarDekhoCar(BaseModel):
             isUpcoming=is_upcoming,
             expectedLaunchDate=expected_launch_date,
             overview=dict(overview),
+            standoutFeatures=raw_standout_features,
             totalVariants=total_variants,
             variants=raw_variants,
             totalComparisons=total_comparisons,

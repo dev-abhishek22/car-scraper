@@ -1471,6 +1471,134 @@ class CarDekhoCarsExecutor:
             "image": image,
         }
 
+    @classmethod
+    def _parse_standout_features(
+        cls,
+        *,
+        quick_overview: Any,
+    ) -> list[dict[str, Any]]:
+        if not isinstance(
+            quick_overview,
+            Mapping,
+        ):
+            return []
+
+        key_and_feature_list = quick_overview.get(
+            "keyAndFeatureList",
+        )
+
+        if not isinstance(
+            key_and_feature_list,
+            list,
+        ):
+            return []
+
+        for feature_group in key_and_feature_list:
+            if not isinstance(
+                feature_group,
+                Mapping,
+            ):
+                continue
+
+            feature_group_id = feature_group.get(
+                "id",
+            )
+
+            if feature_group_id != "stand-out-features":
+                continue
+
+            raw_features = feature_group.get(
+                "list",
+            )
+
+            if not isinstance(
+                raw_features,
+                list,
+            ):
+                return []
+
+            standout_features: list[dict[str, Any]] = []
+
+            for raw_feature in raw_features:
+                if not isinstance(
+                    raw_feature,
+                    Mapping,
+                ):
+                    continue
+
+                standout_feature = dict(raw_feature)
+
+                feature_id = cls._normalize_optional_positive_integer(
+                    standout_feature.get(
+                        "id",
+                    ),
+                )
+
+                if feature_id is not None:
+                    standout_feature["id"] = feature_id
+
+                expert_review_id = cls._normalize_optional_positive_integer(
+                    standout_feature.get(
+                        "expertReviewId",
+                    ),
+                )
+
+                if expert_review_id is not None:
+                    standout_feature["expertReviewId"] = expert_review_id
+
+                for field_name in (
+                    "standOutFeatures",
+                    "standOutFeaturesWithoutTag",
+                    "title",
+                    "lang",
+                    "text",
+                ):
+                    if field_name in standout_feature:
+                        normalized_value = cls._normalize_optional_string(
+                            standout_feature.get(
+                                field_name,
+                            ),
+                        )
+
+                        standout_feature[field_name] = normalized_value
+
+                for field_name in (
+                    "imageUrl",
+                    "webp",
+                ):
+                    raw_urls = standout_feature.get(
+                        field_name,
+                    )
+
+                    if not isinstance(
+                        raw_urls,
+                        list,
+                    ):
+                        standout_feature[field_name] = []
+                        continue
+
+                    normalized_urls: list[str] = []
+
+                    for raw_url in raw_urls:
+                        normalized_url = cls._normalize_optional_url(
+                            raw_url,
+                        )
+
+                        if normalized_url is not None:
+                            normalized_urls.append(
+                                normalized_url,
+                            )
+
+                    standout_feature[field_name] = normalized_urls
+
+                standout_features.append(
+                    standout_feature,
+                )
+
+            return standout_features
+
+        return []
+
     async def execute(
         self,
         *,
@@ -1545,6 +1673,12 @@ class CarDekhoCarsExecutor:
             current_model_slug=model_slug,
         )
 
+        standout_features = self._parse_standout_features(
+            quick_overview=data.get(
+                "quickOverview",
+            ),
+        )
+
         return {
             "overview": overview,
             "totalVariants": len(variants),
@@ -1554,4 +1688,5 @@ class CarDekhoCarsExecutor:
             "totalSimilarCars": len(similar_cars),
             "similarCars": similar_cars,
             "oldGenerationComparison": old_generation_comparison,
+            "standoutFeatures": standout_features,
         }

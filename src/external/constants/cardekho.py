@@ -62,6 +62,19 @@ CARDEKHO_MODEL_GALLERY: Final[ApiEndpoint] = ApiEndpoint(
 )
 
 
+CARDEKHO_MODEL_GALLERY_POPUP: Final[ApiEndpoint] = ApiEndpoint(
+    name="cardekho_model_gallery_popup",
+    method="GET",
+    path="/api/v1/model/galleryPopup",
+    default_params={
+        "otherinfo": "all",
+    },
+    default_headers={
+        "Referer": "https://www.cardekho.com/",
+    },
+)
+
+
 CARDEKHO_MODEL_SPECS: Final[ApiEndpoint] = ApiEndpoint(
     name="cardekho_model_specs",
     method="GET",
@@ -100,6 +113,7 @@ CARDEKHO_APIS: Final[dict[str, ApiEndpoint]] = {
     CARDEKHO_BRAND_MODELS.name: CARDEKHO_BRAND_MODELS,
     CARDEKHO_MODEL_OVERVIEW.name: CARDEKHO_MODEL_OVERVIEW,
     CARDEKHO_MODEL_GALLERY.name: CARDEKHO_MODEL_GALLERY,
+    CARDEKHO_MODEL_GALLERY_POPUP.name: CARDEKHO_MODEL_GALLERY_POPUP,
     CARDEKHO_MODEL_SPECS.name: CARDEKHO_MODEL_SPECS,
     CARDEKHO_CITIES_BUNDLE.name: CARDEKHO_CITIES_BUNDLE,
     CARDEKHO_MODEL_PRICE.name: CARDEKHO_MODEL_PRICE,
